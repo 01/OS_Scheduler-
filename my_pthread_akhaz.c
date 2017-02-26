@@ -27,18 +27,16 @@ int my_pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*function)
 
 	/*Main Context alrady intiialized */
 	my_pthread_t * new_thread = malloc(sizeof(my_pthread_t));
-	new_thread->thread_context = malloc(sizeof(ucontext_t));
-	getcontext(new_thread->thread_context);
-	new_thread->thread_context->uc_link = 0;
-	new_thread->thread_context->uc_stack.ss_sp = malloc(STACK_SIZE);
-	new_thread->thread_context->uc_stack.ss_size = STACK_SIZE;
-	new_thread->thread_context->uc_stack.ss_flags = 0;
-
-	makecontext(new_thread->thread_context, (void *)function, 1, arg);
+	if(getcontext(&(new_thread->context)) < 0){
+		printf("Get context fail");
+		return FAIL
+	}
+	initializeContext(new_thread->thread_context);
+	makecontext(&(new_thread->thread_context), (void *)function, 1, arg);
 	
-	/* TODO: Add to Running QUEUE */
+	/* TODO: Scheduler add thread*/
 
-	return 1;
+	return SUCCCESS;
 
 
 
@@ -212,4 +210,12 @@ mutex_node * getMutexNode(int mutex){
 	}
 
 	return mutex_node_to_return;
+}
+
+void initialize_context(uncontext_t * context){
+	context->uc_link = 0;
+	context->uc_stack.ss_sp = malloc(STACK_SIZE);
+	context->uc_stack.ss_size = STACK_SIZE;
+	context->uc_stack.ss_flags = 0;
+
 }
