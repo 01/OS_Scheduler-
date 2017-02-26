@@ -25,3 +25,10 @@ We have the following tasks which we need to complete:
     * my_pthread_join
 
 Each time the signal handler is executed, we need to check for the current thread's execution time, whether it has completed one timeslice and act accordingly whether that may be context swap and reassigning priorities or simply wait for another execution interruption.
+
+## Algorithm for Designating Priority
+
+In our case, the queue will be partitioned into 5 levels.  
+`q0, q1, ..., q4`  
+Every thread will start at `q0` which is highest priority and then the thread priority will decrease from there by having the thread moved to a later partition.  
+`q0 --> q1`, `q1 --> q2`, etc.  
