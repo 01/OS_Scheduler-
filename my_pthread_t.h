@@ -44,7 +44,7 @@ my_pthread_t * scheduler[3];
 
 typedef struct {
     // Define any fields you might need inside here.
-    int atr
+    int attr;
 } my_pthread_attr_t;
 
 //these are placeholders for your actual implementation
@@ -56,7 +56,7 @@ typedef int my_pthread_mutexattr_t;
 /**
     Creates a pthread that executes function. Attribues are ignored.
 */
-int my_pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*function)(void *), void *arg);
+int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg);
 
 /**
     Explicit call to the my_pthread_t scheduler requesting that the 
@@ -76,13 +76,13 @@ void pthread_exit(void *value_ptr);
     will not execute until the one it references exits. If value_ptr 
     is not null, the return value of the exiting thread will be passed back.
 */
-int my_pthread_join(pthread_t thread, void **value_ptr);
+int my_pthread_join(my_pthread_t thread, void **value_ptr);
 
 /**
     Initializes a my_pthread_mutex_t created by the calling thread. 
     Attributes are ignored.
 */
-int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr);
+int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const m_pthread_mutexattr_t *mutexattr);
 
 /**
     Locks a given mutex, other threads attempting to access this 
