@@ -26,17 +26,19 @@
 #define STACK 1024*64
 
 enum thread_status {PAUSED, BLOCKED, DONE, RUNNING}
-
+enum mutex_status {LOCKED, UNLOCKED}
 
 // Types
-typedef struct {
-    // Define any fields you might need inside here.
-    typedef struct my_pthread_t {
+typedef struct my_pthread_t {
     ucontext_t context;
     struct my_pthread_t * next;
+    struct my_pthread_t * prev;
     struct my_pthread_mutex_t * mutex_flag; //NULL if no mutex
+    struct my_pthread_t * waitlist ;
+    struct my_pthread_t * join;
     enum thread_status status;
     int priority_level;
+    void * return_value;
 } my_pthread_t;
 
 // Multilevel Feedback Queue as shown on slide 30 of Lecture 5 Slides
@@ -46,6 +48,12 @@ typedef struct {
     // Define any fields you might need inside here.
     int attr;
 } my_pthread_attr_t;
+
+typedef struct my_mutex_t{
+    struct my_mutex * next;
+    struct my_mutex * prev;
+    enum mutex_status 
+}my_mutex_t
 
 //these are placeholders for your actual implementation
 typedef int my_pthread_mutex_t;
