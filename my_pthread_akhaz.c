@@ -93,25 +93,18 @@ int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *
     mutex_node * temp = (mutex_node *)malloc(sizeof(mutex_node));
     temp->mutex_value = *mutex;
     temp->mutex_status = UNLOCKED;
-    // No Mutex_List exists, this is first mutex
-    if(mutex_list == NULL){		
-    	mutex_list = temp;
+    temp->mutex_waitlist = (mutex_waitlist *)malloc(sizeof(queue));
+    temp->mutex_waitlist->size = 0;
+    // No Mutex_List exists, this is first mutex	
+    if(mutex_list == NULL){
+    	mutex_list = (queue *)malloc(sizeof(queue));
+    	mutex_list->size = 0;
     }
-    else{
-    	// Add to Head (order doesnt matter)
-    	temp->next = mutex_list
-
-    	mutex_list = temp;
-    }
-    
-
-;
 
     printf("Mutex Initialized and added to mutex_list\n");
 
-    return 0;
-
- 
+    return SUCCESS;
+    
 }
 
 int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
@@ -126,8 +119,15 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
 		return -1;
 	}
 
-	while(mutex_to_lock->mutex_status == LOCKED){
-		// Endless loop until lock becomes free
+	while(_sync_lock_test_and_set(&(mutex->mutex_status), LOCKED) == LOCKED){
+		// Change calling thread status to WAITING
+		
+		// Put thread on mutex's waitlist
+		prinf("Thread is waiting on mutex......\n");
+		enqueue(mutex_to_lock->waitlist, /*thread*/);
+
+		// Call scheduler
+		
 	}
 	printf("Mutex became unlocked.... free to lock");
 	mutex_to_lock->mutex_status = LOCKED;
@@ -141,24 +141,29 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex) {
 	 * 
 	 * Opposite of lock
 	 */
-
+	if(mutex == NULL){
+		printf("Mutex Pointer is NULL");
+		return EINVAL;
+	}
 	mutex_node * mutex_to_unlock = getMutexNode(*mutex);
 	if(mutex_to_unlock == NULL){
 		printf("Mutex not initialized\n");
-		return -1;
+		return EINVAL;
 	}
 
 	if(mutex_to_unlock->mutex_status == LOCKED){
-		mutex_to_unlock->mutex_status = UNLOCKED;
+		next_thread = dequeue(mutex_to_unlock->waitlist);
+		// add thread to scheduller
 	}
 	else{
 		printf("Mutex is already unlocked\n");
-		return -1;
+		return FAIL;
 	}
+	mutex_to_unlock->mutex_status = UNLOCKED;
 	printf("Mutex became unlocked.... free to lock");
 
 
-	return 0;
+	return SUCCESS;
 
 
 }
@@ -168,16 +173,22 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex) {
 	 * Mutex must be unlocked before it can be destoryed
 	 * Figure just remove from mutex list if its not locked
 	 */
+
+	if(mutex == NULL){
+		printf("Mutex Pointer is NULL");
+		return EINVAL;
+	}
 	mutex_node * mutex_to_destroy = getMutexNode(*mutex);
-	if(mutex_to_unlock == NULL){
+	if(mutex_to_destroy== NULL){
 		printf("Mutex not initialized\n");
-		return -1;
+		return FAIL;
 	}
 
 	if(mutex_to_unlock->mutex_status == LOCKED){
 		printf("Can not destroy a locked mutex\n");
-		return -1;
+		return FAIL;
 	}
+	dequeue(mutex_list, mutex_to_destory);
 
 	// Decided if reference to node matters or if can do 
 	// Trick to switch data with one in front of it 

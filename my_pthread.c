@@ -86,15 +86,15 @@ void init_queue(queue * q) {
 	q->size = 0;
 }
 
-void enqueue(queue * q, my_pthread_t * thread) {
+void enqueue(queue * q, void * node) {
 	// insert thread to the end of the queue
 	if (q->size == 0) {
-		q->head = q->tail = thread;
-		thread->next = NULL;
+		q->head = q->tail = node;
+		node->next = NULL;
 		size++;
 	}
 	else {
-		q->tail->next = thread;
+		q->tail->next = node;
 	}
 	thread->next = NULL;
 	size++;

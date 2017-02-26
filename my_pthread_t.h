@@ -68,15 +68,16 @@ struct my_pthread_mutex_t_node * mutex_list
 typedef int my_pthread_mutex_t;
 typedef int my_pthread_mutexattr_t;
 
-
+// Generic queue struct must cast pointers
+// W.e casted to better have a next 
 typedef struct queue {
-    my_pthread_t * head;
-    my_pthread_t * tail;
+    void * head;
+    void * tail;
     int size;
 } queue;
 
 void init_queue(queue * q);
-void enqueue(queue * q, my_pthread_t * thread);
+void enqueue(queue * q, void * thread);
 my_pthread_t * dequeue(queue * q);
 my_pthread_t * peek(queue * q); // use for checking if queue is empty. if null, queue is empty
 
