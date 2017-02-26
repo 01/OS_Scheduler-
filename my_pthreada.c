@@ -6,8 +6,6 @@
 
 static isIntialized = 0;
 
-static uncontext_t main;
-
 int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg) {
 	/* Creates a pthread and sets up its context
 	* Mallocs and allocates a stack
@@ -292,11 +290,14 @@ void initializeScheduler(){
     init_queue(sched->MLQ_Running[2]);
     init_queue(sched->mutex_list);
 
+    uncontext_t main;
     getcontext(&main);
-	sched->main_thread = malloc(sizeof(my_pthread_t));
-	sched->main_thread->context= main;
-	sched->main_thread->threadID = 0;
-	sched->current_thread = NULL;
+		my_pthread_t * main_node;
+		main_node->context= Main;
+
+		//add main node to scheduler
+		add_new_thread(main_node);
+		printf("Main node added\n");
 
 }
 

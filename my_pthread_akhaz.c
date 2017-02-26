@@ -15,7 +15,7 @@ int my_pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*function)
 	if(!isIntialized){
 		isInitialized = 1;
 		printf("First thread being created, intialize");
-		main_context = malloc(sizeof(ucontext_t));
+		curr_context = malloc(sizeof(ucontext_t));
 		getcontext(main_context);
 
 		my_pthread_t * initial_thread = malloc(sizeof(my_pthread_t));
