@@ -65,6 +65,8 @@ void my_pthread_yield() { //scheduler will go in here
 				exit thread and save return value into arg
 			if not:
 	*/
+
+	//NOTE: If something calls yield that isn't timer_exp, be sure to run kill_timer() here
 	
 	my_pthread_t * curr = sched->current_thread;
     if(curr->thread_status == RUNNING){
@@ -84,10 +86,11 @@ void my_pthread_yield() { //scheduler will go in here
 			else if{thr->thread_status == BLOCKED}{ //mutexed... right?
 				enqueue(sched->mutex_queue, thr);
 			}
-			else if(thr->thread_status == DONE){ //should not happen
-				printf("Warning: Thread %p is finished but has been queued\n", thr);
+			else if(thr->thread_status == DONE){
+				enqueue(sched->MLQ_Running[new_priority], curr);
+				swapcontext(curr->thread_context, thr->thread_context);
 				my_pthread_exit(thr->return_value);
-				i--;
+				break;
 			}
 			else{
 				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority], curr);
@@ -117,7 +120,13 @@ void my_pthread_yield() { //scheduler will go in here
 }
 
 void my_pthread_exit(void *value_ptr) {
-
+	/* Explicit call to the my_pthread_t library tto end thread that called it. If its value ptr isnt NULL
+	 * any return from thread will be saved 
+	 * 
+	 * Send signal to scheduler to let it know its exiting
+	 * Change status to done, and yield the main context 
+     * 
+	 */
 }
 
 int my_pthread_join(pthread_t thread, void **value_ptr) {
@@ -282,6 +291,7 @@ void timer_set(struct itimerval it_val, int sec, int usec){
 
 void kill_timer(){
 	//aborts the timer by creating a new timer with time 0
+	printf("Timer killed.");
 	it_val.it_interval.tv_sec = 0;
 	it_val.it_interval.tv_usec = 0;
 	it_val.it_value.tv_sec = 0;
