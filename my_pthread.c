@@ -304,7 +304,13 @@ void initializeScheduler(){
     init_queue(sched->MLQ_Running[0]);
     init_queue(sched->MLQ_Running[1]);
     init_queue(sched->MLQ_Running[2]);
-    init_queue(sched->mutex_list)
+    init_queue(sched->mutex_list);
+
+	getcontext(&main);
+	sched->main_thread = malloc(sizeof(my_pthread_t));
+	sched->main_thread->context= main;
+	sched->main_thread->threadID = 0;
+	sched->current_thread = NULL;
 
 }
 
