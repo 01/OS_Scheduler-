@@ -59,8 +59,7 @@ typedef struct my_pthread_mutex_t_node{
     enum mutex_status                   // Status locked or unlocked
     struct my_pthread_t * waitlist      // List of threads waiting on this mutex
 
-}mutex_node
-
+} mutex_node;
 
 struct my_pthread_mutex_t_node * mutex_list
 
@@ -68,6 +67,18 @@ struct my_pthread_mutex_t_node * mutex_list
 //these are placeholders for your actual implementation
 typedef int my_pthread_mutex_t;
 typedef int my_pthread_mutexattr_t;
+
+
+typedef struct queue {
+    my_pthread_t * head;
+    my_pthread_t * tail;
+    int size;
+} queue;
+
+void init_queue(queue * q);
+void enqueue(queue * q, my_pthread_t * thread);
+my_pthread_t * dequeue(queue * q);
+my_pthread_t * peek(queue * q); // use for checking if queue is empty. if null, queue is empty
 
 
 /*
