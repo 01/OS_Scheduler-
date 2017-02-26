@@ -63,13 +63,13 @@ int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *
 
     mutex->flag = 0;
     //mutex->block = 0;
-    mutex->wait = malloc(sizeof(priorityQueue)); //make a waiting queue for mutex
+    mutex->wait = malloc(sizeof(MLQ_Queue)); //make a waiting queue for mutex
 
-    initQueue(mutex->wait);
+;
 
     printf("mutex was succuesfully initiated\n");
 
-    return init=0;
+ 
 }
 
 int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
