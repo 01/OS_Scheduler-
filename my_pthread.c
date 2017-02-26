@@ -6,7 +6,7 @@
 
 static isIntialized = 0;
 
-static uncontext_t main;
+static ucontext_t main;
 
 int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg) {
 	/* Creates a pthread and sets up its context
@@ -28,6 +28,7 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	thread->priority_level = 0;
 	initializeContext(&(thread->thread_context));
 	makecontext(&(thread->thread_context), (void *)function, 1, arg);
+	
 	enqueue(sched->MLQ[0], thread);
 	
 	
@@ -70,9 +71,10 @@ void my_pthread_yield() { //scheduler will go in here
     	curr->thread_status = PAUSED;
     }
     new_priority = min(curr->priority_level + 1, 2);
+    curr->priority_level = new_priority;
 	//loop through queues to find a thread on the running queue
 	int i = 0;
-	for(i = 0; i < 3; i++){
+	for(; i < 3; i++){
 		if(sched->MLQ_Running[i]->size != 0){
 			my_pthread_t thr = dequeue(sched->MLQ_Running[i]);
 			if(thr->thread_status == RUNNING){ //should not happen
@@ -82,12 +84,13 @@ void my_pthread_yield() { //scheduler will go in here
 			else if{thr->thread_status == BLOCKED}{ //mutexed... right?
 				enqueue(sched->mutex_queue, thr);
 			}
-			else if(thr->thread_status = DONE){ //should not happen
+			else if(thr->thread_status == DONE){ //should not happen
 				printf("Warning: Thread %p is finished but has been queued\n", thr);
-				//do nothing
+				my_pthread_exit(thr->return_value);
+				i--;
 			}
 			else{
-				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority];
+				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority], curr);
 				swapcontext(curr->thread_context, thr->thread_context);
 				break;
 			}
@@ -96,13 +99,24 @@ void my_pthread_yield() { //scheduler will go in here
 
 	// reset timer
 	struct itimerval it_val;
-	timer_set(it_val, 0, INTERRUPT_TIME);
+	switch(new_priority){
+		case 0:
+		timer_set(it_val, 0, INTERRUPT_TIME);
+		break;
+		case 1:
+		timer_set(it_val, 0, INTERRUPT_TIME * 2);
+		break;
+		case 2:
+		timer_set(it_val, 0, INTERRUPT_TIME * 4);
+		break;
+	}
+	
 	//print address of currently running thread
 	
 	// return
 }
 
-void pthread_exit(void *value_ptr) {
+void my_pthread_exit(void *value_ptr) {
 
 }
 
@@ -290,13 +304,7 @@ void initializeScheduler(){
     init_queue(sched->MLQ_Running[0]);
     init_queue(sched->MLQ_Running[1]);
     init_queue(sched->MLQ_Running[2]);
-    init_queue(sched->mutex_list);
-
-    getcontext(&main);
-	sched->main_thread = malloc(sizeof(my_pthread_t));
-	sched->main_thread->context= main;
-	sched->main_thread->threadID = 0;
-	sched->current_thread = NULL;
+    init_queue(sched->mutex_list)
 
 }
 
@@ -314,7 +322,7 @@ mutex_node * getMutexNode(int mutex){
 	return mutex_node_to_return;
 }
 
-void initialize_context(uncontext_t * context){
+void initialize_context(ucontext_t * context){
 	context->uc_link = 0;
 	context->uc_stack.ss_sp = malloc(STACK_SIZE);
 	context->uc_stack.ss_size = STACK_SIZE;

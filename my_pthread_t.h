@@ -56,7 +56,6 @@ typedef struct {
 typedef struct {
     queue * MLQ_Running[3];
     queue * mutex_queue;
-    queue * join_queue;
     my_pthread_t * current_thread;
 } scheduler;
 
@@ -107,7 +106,7 @@ void my_pthread_yield();
     called it. If the value_ptr isn't NULL, any return value from the 
     thread will be saved.
 */
-void pthread_exit(void *value_ptr);
+void my_pthread_exit(void *value_ptr);
 
 /**
     Call to the my_pthread_t library ensuring that the calling thread 
