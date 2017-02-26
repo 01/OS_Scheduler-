@@ -50,9 +50,9 @@ typedef struct {
 } my_pthread_attr_t;
 
 typedef struct my_pthread_mutex_t_node{
-    int my_pthread_mutex_t
-    struct my_mutex * next;
-    struct my_mutex * prev;
+    my_pthread_mutex_t * mutex_value
+    struct mutex_node * next;
+    struct mutex_node * prev;
     enum mutex_status 
 }mutex_node
 
