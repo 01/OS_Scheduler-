@@ -1,6 +1,58 @@
 #ifndef MYPTHREAD_H
 #define MYPTHREAD_H
 
+// Author: John-Austen Francisco
+// Date: Feb 2017
+//
+// Team: 
+// Arpit Shah (aps180)
+// Andrew Khaz (akhaz)
+// Mikhail Soumar (ms2237)
+// 
+// Ilab machine used: vi.cs.rutgers.edu
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
+#include <signal.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sched.h>
+#include <uncontext.h>
+#include <sys/time.h>
+
+#define STACK 1024*64
+
+enum thread_status {PAUSED, BLOCKED, DONE, RUNNING}
+
+
+// Types
+typedef struct {
+    // Define any fields you might need inside here.
+    typedef struct my_pthread_t {
+    ucontext_t context;
+    struct my_pthread_t * next;
+    struct my_pthread_mutex_t * mutex_flag; //NULL if no mutex
+    enum thread_status status;
+    int priority_level;
+} my_pthread_t;
+
+// Multilevel Feedback Queue as shown on slide 30 of Lecture 5 Slides
+my_pthread_t * scheduler[3];
+
+typedef struct {
+    // Define any fields you might need inside here.
+    int atr
+} my_pthread_attr_t;
+
+//these are placeholders for your actual implementation
+typedef int my_pthread_mutex_t;
+typedef int my_pthread_mutexattr_t;
+
+
+/*
 /**
     Creates a pthread that executes function. Attribues are ignored.
 */
