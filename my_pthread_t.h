@@ -20,14 +20,14 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <sched.h>
-#include <uncontext.h>
+#include <ucontext.h>
 #include <sys/time.h>
 
 #define STACK_SIZE 1024*64
 
 /***** Global Stuff ******/
-uncontext_t * main_context;
-
+ucontext_t * main_context;
+scheduler * sched;
 /*************************/
 
 enum thread_status {PAUSED, BLOCKED, DONE, RUNNING}
@@ -37,8 +37,8 @@ enum mutex_status {LOCKED, UNLOCKED}
 typedef struct my_pthread_t {
     ucontext_t * thread_context;
     struct my_pthread_t * next;
-    struct my_pthread_mutex_t * mutex_flag; // NULL if no mutex
-    struct my_pthread_t * waitlist ;        // List of threads that this thread is waiting on 
+    struct my_pthread_mutex_t * mutex_flag; //NULL if no mutex
+    struct my_pthread_t * waitlist ;        // List of 
     struct my_pthread_t * joinlist;         // List of threads that are joined to execution of this thread
     enum thread_status status;
     int priority_level;
@@ -52,6 +52,13 @@ typedef struct {
     // Define any fields you might need inside here.
     int attr;
 } my_pthread_attr_t;
+
+typedef struct {
+    queue * MLQ_Running[3];
+    queue * mutex_queue;
+    queue * join_queue;
+    my_pthread_t * current_thread;
+} scheduler;
 
 typedef struct my_pthread_mutex_t_node{
     my_pthread_mutex_t  mutex_value     // Mutex value
@@ -68,11 +75,10 @@ struct my_pthread_mutex_t_node * mutex_list
 typedef int my_pthread_mutex_t;
 typedef int my_pthread_mutexattr_t;
 
-// Generic queue struct must cast pointers
-// W.e casted to better have a next 
+
 typedef struct queue {
-    void * head;
-    void * tail;
+    my_pthread_t * head;
+    my_pthread_t * tail;
     int size;
 } queue;
 
@@ -81,7 +87,9 @@ void enqueue(queue * q, void * thread);
 my_pthread_t * dequeue(queue * q);
 my_pthread_t * peek(queue * q); // use for checking if queue is empty. if null, queue is empty
 
-
+void timer_set(struct itimerval it_val, int sec, int usec);
+void kill_timer();
+void timer_exp(int signum);
 /*
 /**
     Creates a pthread that executes function. Attribues are ignored.
