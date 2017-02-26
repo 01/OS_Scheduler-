@@ -37,8 +37,8 @@ enum mutex_status {LOCKED, UNLOCKED}
 typedef struct my_pthread_t {
     ucontext_t * thread_context;
     struct my_pthread_t * next;
-    struct my_pthread_mutex_t * mutex_flag; //NULL if no mutex
-    struct my_pthread_t * waitlist ;        // List of 
+    struct my_pthread_mutex_t * mutex_flag; // NULL if no mutex
+    struct my_pthread_t * waitlist ;        // List of threads that this thread is waiting on 
     struct my_pthread_t * joinlist;         // List of threads that are joined to execution of this thread
     enum thread_status status;
     int priority_level;
