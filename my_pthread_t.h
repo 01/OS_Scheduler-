@@ -42,18 +42,23 @@ typedef struct my_pthread_t {
 } my_pthread_t;
 
 // Multilevel Feedback Queue as shown on slide 30 of Lecture 5 Slides
-my_pthread_t * scheduler[3];
+my_pthread_t * MLQ_Running[3];
 
 typedef struct {
     // Define any fields you might need inside here.
     int attr;
 } my_pthread_attr_t;
 
-typedef struct my_mutex_t{
+typedef struct my_pthread_mutex_t_node{
+    int my_pthread_mutex_t
     struct my_mutex * next;
     struct my_mutex * prev;
     enum mutex_status 
-}my_mutex_t
+}mutex_node
+
+
+struct my_pthread_mutex_t_node * mutex_list
+
 
 //these are placeholders for your actual implementation
 typedef int my_pthread_mutex_t;
