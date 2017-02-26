@@ -2,14 +2,46 @@
 #include <stdlib.h>
 #include <signal.h>
 
+static isIntialized = 0;
+
 int my_pthread_create(pthread_t *thread, pthread_attr_t *attr, void *(*function)(void *), void *arg) {
-/* Creates a pthread and sets up its context
- * Mallocs and allocates a stack
- * Makes a Context 
- * Checks if the scheduler is initialized, if its not initialzes the MLQ (make helper)
- * Sets main context initializing pthread
- * if MLQ initialized run algo and add to queue * 1st level i think (might want to make helper)
-*/
+	/* Creates a pthread and sets up its context
+	* Mallocs and allocates a stack
+	* Makes a Context 
+	* Checks if the scheduler is initialized, if its not initialzes the MLQ (make helper)
+	* Sets main context initializing pthread
+	* if MLQ initialized run algo and add to queue * 1st level i think (might want to make helper)
+	*/	
+	if(!isIntialized){
+		isInitialized = 1;
+		printf("First thread being created, intialize");
+		main_context = malloc(sizeof(ucontext_t));
+		getcontext(main_context);
+
+		my_pthread_t * initial_thread = malloc(sizeof(my_pthread_t));
+		my_pthread_t->thread_context = main_context;
+
+		/* TODO: Insert in Running Queue */
+
+	}
+
+	/*Main Context alrady intiialized */
+	my_pthread_t * new_thread = malloc(sizeof(my_pthread_t));
+	new_thread->thread_context = malloc(sizeof(ucontext_t));
+	getcontext(new_thread->thread_context);
+	new_thread->thread_context->uc_link = 0;
+	new_thread->thread_context->uc_stack.ss_sp = malloc(STACK_SIZE);
+	new_thread->thread_context->uc_stack.ss_size = STACK_SIZE;
+	new_thread->thread_context->uc_stack.ss_flags = 0;
+
+	makecontext(new_thread->thread_context, (void *)function, 1, arg);
+	
+	/* TODO: Add to Running QUEUE */
+
+	return 1;
+
+
+
 }
 
 void my_pthread_yield() {
@@ -149,6 +181,7 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex) {
 
 	// Decided if reference to node matters or if can do 
 	// Trick to switch data with one in front of it 
+	// REMOVE MUTEX AND FREE SPACEs
 
 	return 0;
 
