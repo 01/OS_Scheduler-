@@ -14,42 +14,20 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	* Sets main context initializing pthread
 	* if MLQ initialized run algo and add to queue * 1st level i think (might want to make helper)
 	*/	
-	if(!isIntialized){
-		isInitialized = 1;
-		printf("First thread being created, intialize");
-		main_context = malloc(sizeof(ucontext_t));
-		getcontext(main_context);
-
-		my_pthread_t * initial_thread = malloc(sizeof(my_pthread_t));
-		my_pthread_t->thread_context = main_context;
-		initial_thread->thread_status = RUNNING;
-		initial_thread->priority_level = 0;
-
-		/* TODO: Insert in Running Queue */
-		sched = malloc(sizeof(scheduler));
-		sched->MLQ_Running = NULL;
-		sched->mutex_queue = NULL;
-    	sched->join_queue = NULL;
-    	sched->current_thread = initial_thread;
-
-    	sched->MLQ_Running[0] = malloc(sizeof(queue));
-    	init_queue(sched->MLQ_Running[0]);
-    	init_queue(sched->MLQ_Running[1]);
-    	init_queue(sched->MLQ_Running[2]);
-	}
 	
-	/*Main Context alrady intiialized */
-	else{
-		my_pthread_t * new_thread = malloc(sizeof(my_pthread_t));
-		if(getcontext(&(new_thread->context)) < 0){
-			printf("Get context fail");
-			return FAIL
-		}
-		initializeContext(new_thread->thread_context);
-		makecontext(&(new_thread->thread_context), (void *)function, 1, arg);
-		new_thread->thread_status = RUNNING;
-		new_thread->priority_level = 0;
+	thread = malloc(sizeof(my_pthread_t));
+	if(getcontext(&(thread->thread_context)) < 0){
+		printf("Get context fail");
+		return FAIL;
 	}
+	thread->thread_status = RUNNING;
+	thread->priority_level = 0;
+	initializeContext(thread->thread_context);
+	makecontext(&(thread->thread_context), (void *)function, 1, arg);
+	
+	enqueue(sched->MLQ[0], thread);
+	
+	
 
 	//set timer to execute
 	struct itimerval it_val;
@@ -202,5 +180,18 @@ void kill_timer(){
 void timer_exp(int signum){
 	//time has expired
 	my_pthread_yield();
+
+}
+
+void initializeSched(){
+	sched = malloc(sizeof(scheduler));
+    sched->MLQ_Running[0] = malloc(sizeof(queue));
+    sched->MLQ_Running[1] = malloc(sizeof(queue));
+	sched->MLQ_Running[2] = malloc(sizeof(queue));
+	sched->mutex_list = malloc(sizeof(queue));
+    init_queue(sched->MLQ_Running[0]);
+    init_queue(sched->MLQ_Running[1]);
+    init_queue(sched->MLQ_Running[2]);
+    init_queue(sched->mutex_list)
 
 }
