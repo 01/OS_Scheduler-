@@ -28,7 +28,8 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	thread->priority_level = 0;
 	initializeContext(&(thread->thread_context));
 	makecontext(&(thread->thread_context), (void *)function, 1, arg);
-	enqueue(sched->MLQ[0], thread);
+	enqueue(sched->MLQ[thread->priority_level], thread);
+	sched->total_threads++;
 	
 	
 
@@ -107,6 +108,9 @@ void pthread_exit(void *value_ptr) {
 }
 
 int my_pthread_join(pthread_t thread, void **value_ptr) {
+	int threadId = thread.threadID;
+	return 
+
 
 }
 
@@ -147,7 +151,8 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
 		
 		// Put thread on mutex's waitlist
 		prinf("Thread is waiting on mutex......\n");
-		enqueue(mutex_to_lock->waitlist, /*thread*/);
+		sched->current_thread->thread_status = BLOCKED;
+		enqueue(mutex_to_lock->waitlist, sched->current_thread);
 
 		// Call scheduler
 		
@@ -287,6 +292,7 @@ void initializeScheduler(){
     sched->MLQ_Running[1] = malloc(sizeof(queue));
 	sched->MLQ_Running[2] = malloc(sizeof(queue));
 	sched->mutex_list = malloc(sizeof(queue));
+	sched->total_threads = 0;
     init_queue(sched->MLQ_Running[0]);
     init_queue(sched->MLQ_Running[1]);
     init_queue(sched->MLQ_Running[2]);
@@ -295,6 +301,8 @@ void initializeScheduler(){
     getcontext(&main);
 	sched->main_thread = malloc(sizeof(my_pthread_t));
 	sched->main_thread->context= main;
+	sched->main_thread->context.uc_link = 0;
+
 	sched->main_thread->threadID = 0;
 	sched->current_thread = NULL;
 
