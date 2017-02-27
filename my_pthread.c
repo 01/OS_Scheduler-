@@ -25,6 +25,8 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 		return FAIL;
 	}
 	thread->thread_status = RUNNING;
+	thread->threadAddress = thread;
+	thread->threadID = sched->totalThreads;
 	thread->priority_level = 0;
 	initializeContext(&(thread->thread_context));
 	makecontext(&(thread->thread_context), (void *)function, 1, arg);
@@ -130,8 +132,8 @@ void my_pthread_exit(void *value_ptr) {
 }
 
 int my_pthread_join(pthread_t thread, void **value_ptr) {
-	int threadId = thread.threadID;
-	return 
+	my_pthread_t * this_thread = thread.threadAddress;
+	
 
 
 }
@@ -327,6 +329,7 @@ void initializeScheduler(){
 	sched->main_thread->context.uc_link = 0;
 
 	sched->main_thread->threadID = 0;
+	sched->total_threads ++;
 	sched->current_thread = NULL;
 
 }

@@ -35,22 +35,18 @@ enum mutex_status {LOCKED, UNLOCKED}
 
 // Types
 typedef struct my_pthread_t {
-    ucontext_t * thread_context;
+    ucontext_t  thread_context;
     struct my_pthread_t * next;
     struct my_pthread_mutex_t * mutex_flag; // NULL if no mutex
-    struct my_pthread_t * waitlist ;        // List of threads that this thread is waiting on 
     struct my_pthread_t * joinlist;         // List of threads that are joined to execution of this thread
     enum thread_status status;
     int priority_level;
     void * return_value;
 } my_pthread_t;
 
-// Multilevel Feedback Queue as shown on slide 30 of Lecture 5 Slides
-my_pthread_t * MLQ_Running[3];
 
 typedef struct {
-    // Define any fields you might need inside here.
-    int attr;
+
 } my_pthread_attr_t;
 
 typedef struct {
