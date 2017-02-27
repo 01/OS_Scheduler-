@@ -130,11 +130,28 @@ void my_pthread_exit(void *value_ptr) {
 	 * Change status to done, and yield the main context 
      * 
 	 */
+
+	value_ptr = sched->current_thread->return_value;
+	sched->current_thread->thread_status = DONE;
+	my_pthread_yield();
 }
 
 int my_pthread_join(pthread_t thread, void **value_ptr) {
-	my_pthread_t * this_thread = thread.threadAddress;
-	
+	if(thread == NULL){
+		printf("Not thread");
+		return FAIL;
+	}
+
+	my_pthread_t * join_thread = thread.threadAddress;
+	join_thread->parent_thread = sched->current_thread;
+	sched->current_thread->thread_status = WAITING;
+	while(thread->thread_status != DONE){
+		my_pthread_yield();
+	}
+	if(value_ptr != NULL){
+		*value_ptr = current_thread->return_value;
+	}
+	return 0
 
 
 }
@@ -165,7 +182,10 @@ int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *
 }
 
 int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
-		mutex_node * mutex_to_lock = getMutexNode(*mutex);
+	if(mutex == NULL){
+		print("")
+	}
+	mutex_node * mutex_to_lock = getMutexNode(*mutex);
 	if(mutex_to_lock == NULL){
 		printf("Mutex not initialized");
 		return -1;
