@@ -6,7 +6,7 @@
 
 static isIntialized = 0;
 
-static uncontext_t main;
+static ucontext_t main;
 
 int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg) {
 	/* Creates a pthread and sets up its context
@@ -65,15 +65,18 @@ void my_pthread_yield() { //scheduler will go in here
 				exit thread and save return value into arg
 			if not:
 	*/
+
+	//NOTE: If something calls yield that isn't timer_exp, be sure to run kill_timer() here
 	
 	my_pthread_t * curr = sched->current_thread;
     if(curr->thread_status == RUNNING){
     	curr->thread_status = PAUSED;
     }
     new_priority = min(curr->priority_level + 1, 2);
+    curr->priority_level = new_priority;
 	//loop through queues to find a thread on the running queue
 	int i = 0;
-	for(i = 0; i < 3; i++){
+	for(; i < 3; i++){
 		if(sched->MLQ_Running[i]->size != 0){
 			my_pthread_t thr = dequeue(sched->MLQ_Running[i]);
 			if(thr->thread_status == RUNNING){ //should not happen
@@ -83,12 +86,14 @@ void my_pthread_yield() { //scheduler will go in here
 			else if{thr->thread_status == BLOCKED}{ //mutexed... right?
 				enqueue(sched->mutex_queue, thr);
 			}
-			else if(thr->thread_status = DONE){ //should not happen
-				printf("Warning: Thread %p is finished but has been queued\n", thr);
-				//do nothing
+			else if(thr->thread_status == DONE){
+				enqueue(sched->MLQ_Running[new_priority], curr);
+				swapcontext(curr->thread_context, thr->thread_context);
+				my_pthread_exit(thr->return_value);
+				break;
 			}
 			else{
-				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority];
+				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority], curr);
 				swapcontext(curr->thread_context, thr->thread_context);
 				break;
 			}
@@ -97,14 +102,31 @@ void my_pthread_yield() { //scheduler will go in here
 
 	// reset timer
 	struct itimerval it_val;
-	timer_set(it_val, 0, INTERRUPT_TIME);
+	switch(new_priority){
+		case 0:
+		timer_set(it_val, 0, INTERRUPT_TIME);
+		break;
+		case 1:
+		timer_set(it_val, 0, INTERRUPT_TIME * 2);
+		break;
+		case 2:
+		timer_set(it_val, 0, INTERRUPT_TIME * 4);
+		break;
+	}
+	
 	//print address of currently running thread
 	
 	// return
 }
 
-void pthread_exit(void *value_ptr) {
-
+void my_pthread_exit(void *value_ptr) {
+	/* Explicit call to the my_pthread_t library tto end thread that called it. If its value ptr isnt NULL
+	 * any return from thread will be saved 
+	 * 
+	 * Send signal to scheduler to let it know its exiting
+	 * Change status to done, and yield the main context 
+     * 
+	 */
 }
 
 int my_pthread_join(pthread_t thread, void **value_ptr) {
@@ -273,6 +295,7 @@ void timer_set(struct itimerval it_val, int sec, int usec){
 
 void kill_timer(){
 	//aborts the timer by creating a new timer with time 0
+	printf("Timer killed.");
 	it_val.it_interval.tv_sec = 0;
 	it_val.it_interval.tv_usec = 0;
 	it_val.it_value.tv_sec = 0;
@@ -298,7 +321,7 @@ void initializeScheduler(){
     init_queue(sched->MLQ_Running[2]);
     init_queue(sched->mutex_list);
 
-    getcontext(&main);
+	getcontext(&main);
 	sched->main_thread = malloc(sizeof(my_pthread_t));
 	sched->main_thread->context= main;
 	sched->main_thread->context.uc_link = 0;
@@ -322,7 +345,7 @@ mutex_node * getMutexNode(int mutex){
 	return mutex_node_to_return;
 }
 
-void initialize_context(uncontext_t * context){
+void initialize_context(ucontext_t * context){
 	context->uc_link = 0;
 	context->uc_stack.ss_sp = malloc(STACK_SIZE);
 	context->uc_stack.ss_size = STACK_SIZE;
