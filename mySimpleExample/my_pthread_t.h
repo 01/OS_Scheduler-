@@ -27,7 +27,7 @@
 
 /*************************/
 
-enum thread_status {PAUSED, BLOCKED, DONE, RUNNING};
+enum thread_status {PAUSED, BLOCKED, DONE, RUNNING, ACTIVE};
 enum mutex_status {LOCKED, UNLOCKED};
 
 //these are placeholders for your actual implementation
@@ -66,7 +66,7 @@ typedef struct {
     my_pthread_t * main_thread;
 } scheduler;
 
-scheduler * sched;
+
 
 typedef struct my_pthread_mutex_t_node{
     struct mutex_node * next;           // Pointer to next mutex in mutex list      
