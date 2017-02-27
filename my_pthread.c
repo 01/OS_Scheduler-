@@ -4,7 +4,7 @@
 
 #define INTERRUPT_TIME 50*1000 //number of microseconds for itimer to go off
 
-static isIntialized = 0;
+static int isInitialized = 0;
 
 static ucontext_t main;
 
@@ -17,8 +17,9 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	* if MLQ initialized run algo and add to queue * 1st level i think (might want to make helper)
 	*/	
 	
-	if(!isIntialized){
+	if(!isInitialized){
 		initializeScheduler();
+		isInitialized = 1;
 	}
 	if(getcontext(&(thread->thread_context)) < 0){
 		printf("Get context fail");
