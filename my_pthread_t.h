@@ -25,8 +25,7 @@
 
 #define STACK_SIZE 1024*64
 
-/***** Global Stuff ******/
-ucontext_t * main_context;
+
 scheduler * sched;
 /*************************/
 
@@ -37,8 +36,9 @@ enum mutex_status {LOCKED, UNLOCKED}
 typedef struct my_pthread_t {
     ucontext_t  thread_context;
     struct my_pthread_t * next;
+    struct my_pthread_t * threadAddress;
+    struct my_pthread_t * parentThread; 
     struct my_pthread_mutex_t * mutex_flag; // NULL if no mutex
-    struct my_pthread_t * joinlist;         // List of threads that are joined to execution of this thread
     enum thread_status status;
     int priority_level;
     void * return_value;
@@ -53,6 +53,7 @@ typedef struct {
     queue * MLQ_Running[3];
     queue * mutex_queue;
     my_pthread_t * current_thread;
+    int totalThreads;
 } scheduler;
 
 typedef struct my_pthread_mutex_t_node{
