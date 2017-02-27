@@ -14,6 +14,7 @@ int main(){
     id = my_pthread_create(&thread, NULL, myThread, (void*)&arg1);
     //pthread_yield();
     arg2 = 2;
+    printf("after create, JOIN: %p\n", thread.threadID);
     my_pthread_join(thread, NULL);
     myThread((void*)&arg2);
     
