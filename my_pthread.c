@@ -6,6 +6,8 @@
 
 static int isInitialized = 0;
 
+static int mutexID = 0;
+
 static ucontext_t main;
 
 int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg) {
@@ -29,6 +31,7 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	thread->threadAddress = thread;
 	thread->threadID = sched->totalThreads;
 	thread->priority_level = 0;
+	thread->next = NULL;
 	initializeContext(&(thread->thread_context));
 	makecontext(&(thread->thread_context), (void *)function, 1, arg);
 	enqueue(sched->MLQ[thread->priority_level], thread);
@@ -158,6 +161,8 @@ int my_pthread_join(pthread_t thread, void **value_ptr) {
 
 int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const pthread_mutexattr_t *mutexattr) {
 	printf("Inside my_pthread_mutex_init\n");
+	*mutex = mutexID;
+	mutexID++;
     if(mutex == NULL){
     	print("Invalid Mutex")
         return EINVAL;
