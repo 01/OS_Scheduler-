@@ -78,7 +78,7 @@ typedef struct my_pthread_mutex_t_node{
 
 struct queue * mutex_list;
 
-mutex_node * getMutexNode(mutex_node * mutex);
+mutex_node * getMutexNode(int mutex);
 void initializeScheduler();
 void initialize_context(ucontext_t * context);
 

@@ -81,29 +81,25 @@ void my_pthread_yield() { //scheduler will go in here
     }
 
     if(curr->thread_status == DONE){
-    	printf("Done cond threadID: %d\n", curr->threadID);
-    	//curr->parent_thread->thread_status = RUNNING;
+    	if(curr->parent_thread)curr->parent_thread->thread_status = RUNNING;
     	//enqueue(sched->MLQ_Running[curr->parent_thread->priority_level], curr->parent_thread);
-    	return;
-    }
+   	}
     int new_priority = curr->priority_level + 1;
     if(new_priority > 2) new_priority = 2;
     curr->priority_level = new_priority;
 	//loop through queues to find a thread on the running queue
 	int i = 0;
-	printf("Thread ID: %d, Queue Size: %d\n", curr->threadID, sched->MLQ_Running[0]->size);
+	//printf("Thread ID: %d, Queue Size: %d\n", curr->threadID, sched->MLQ_Running[0]->size);
 	for(; i < 3; i++){
 		if(sched->MLQ_Running[i]->size != 0){
 			my_pthread_t *thr = (my_pthread_t *)dequeue(sched->MLQ_Running[i]);
 			if(thr->thread_status == ACTIVE){ //should not happen
-				printf("Error: Thread %p is running in queue\n", thr);
 				exit(1);
 			}
 			else if(thr->thread_status == BLOCKED){ //mutexed... right?
-				enqueue(sched->mutex_list, thr);
+				
 			}
 			else if(thr->thread_status == DONE){
-				printf("Exiting on Thread: %d\n", thr->threadID);
 				enqueue(sched->MLQ_Running[new_priority], curr);
 				swapcontext(&(curr->thread_context), &(thr->thread_context));
 				my_pthread_exit(thr->return_value);
@@ -113,9 +109,8 @@ void my_pthread_yield() { //scheduler will go in here
 				if(thr->thread_status != DONE){
 					enqueue(sched->MLQ_Running[new_priority], curr);
 				} 
-				printf("Makes here Thread %d switches with Thread %d\n", curr->threadID, thr->threadID);
+				sched->current_thread = thr;
 				swapcontext(&(curr->thread_context), &(thr->thread_context));
-				printf("makes here toooooo\n");
 				break;
 			}
 		}
@@ -148,12 +143,12 @@ void my_pthread_exit(void *value_ptr) {
 	 * Change status to done, and yield the main context 
      * 
 	 */
-	printf("exiting from thread: %d\n", sched->current_thread->threadID);
+
 	if(sched->current_thread->threadID == 0){
 		// return;
-		printf("exiting system\n");
+
 		//printf("size: %d, %d, %d\n", sched->MLQ_Running[0]->size, sched->MLQ_Running[1]->size, sched->MLQ_Running[2]->size);
-		printf("id: %d\n", ((my_pthread_t *)sched->MLQ_Running[1]->head)->threadID);
+		//printf("id: %d\n", ((my_pthread_t *)sched->MLQ_Running[1]->head)->threadID);
 		// pthread_exit(value_ptr);
 		// dequeue(sched->MLQ_Running[sched->current_thread->priority_level]);
 		//exit(0);
@@ -174,9 +169,9 @@ int my_pthread_join(my_pthread_t thread, void **value_ptr) {
 	child_thread->parent_thread = sched->current_thread;
 	sched->current_thread->thread_status = BLOCKED; // same as WAITING
 	while(child_thread->thread_status != DONE){
-		printf("Join and Yield %d", child_thread->threadID);
+
 		my_pthread_yield();
-		printf("Suckka\n");
+
 		// // return 0;
 		// exit(0);
 	}

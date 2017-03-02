@@ -8,7 +8,7 @@
 
 static int isInitialized = 0;
 static scheduler * sched = NULL;
-
+static int mutexCount = 0;
 static ucontext_t main;
 
 int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*function)(void *), void *arg) {
@@ -19,12 +19,13 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	* Sets main context initializing pthread
 	* if MLQ initialized run algo and add to queue * 1st level i think (might want to make helper)
 	*/	
+	
 	if(!isInitialized){
 		initializeScheduler();
 		isInitialized = 1;
 	}
 	if(getcontext(&(thread->thread_context)) < 0){
-		printf("Get context fail");
+		printf("Get context fail\n");
 		return -1;
 	}
 	thread->thread_status = RUNNING;
@@ -42,8 +43,8 @@ int my_pthread_create(my_pthread_t *thread, my_pthread_attr_t *attr, void *(*fun
 	//set timer to execute
 	struct itimerval it_val;
 	timer_set(it_val, 0, INTERRUPT_TIME);
-	printf("Creating Thread with ID: %d\n", thread->threadID);
-	return 1;
+
+	return 0;
 	
 }
 
@@ -79,25 +80,25 @@ void my_pthread_yield() { //scheduler will go in here
     if(curr->thread_status == RUNNING){
     	curr->thread_status = PAUSED;
     }
-
     if(curr->thread_status == DONE){
-    	if(curr->parent_thread)curr->parent_thread->thread_status = RUNNING;
-    	//enqueue(sched->MLQ_Running[curr->parent_thread->priority_level], curr->parent_thread);
-   	}
+    	curr->parent_thread->thread_status = RUNNING;
+    	enqueue(sched->MLQ_Running[curr->parent_thread->priority_level], curr->parent_thread);
+    	return;
+    }
     int new_priority = curr->priority_level + 1;
     if(new_priority > 2) new_priority = 2;
     curr->priority_level = new_priority;
-	//loop through queues to find a thread on the running queue
+	//loop through queues to find a thread on the 95 queuepr
 	int i = 0;
-	//printf("Thread ID: %d, Queue Size: %d\n", curr->threadID, sched->MLQ_Running[0]->size);
 	for(; i < 3; i++){
 		if(sched->MLQ_Running[i]->size != 0){
 			my_pthread_t *thr = (my_pthread_t *)dequeue(sched->MLQ_Running[i]);
 			if(thr->thread_status == ACTIVE){ //should not happen
+				printf("Error: Thread %p is running in queue\n", thr);
 				exit(1);
 			}
 			else if(thr->thread_status == BLOCKED){ //mutexed... right?
-				
+				enqueue(sched->mutex_list, thr);
 			}
 			else if(thr->thread_status == DONE){
 				enqueue(sched->MLQ_Running[new_priority], curr);
@@ -106,10 +107,7 @@ void my_pthread_yield() { //scheduler will go in here
 				break;
 			}
 			else{
-				if(thr->thread_status != DONE){
-					enqueue(sched->MLQ_Running[new_priority], curr);
-				} 
-				sched->current_thread = thr;
+				if(curr->thread_status != DONE) enqueue(sched->MLQ_Running[new_priority], curr);
 				swapcontext(&(curr->thread_context), &(thr->thread_context));
 				break;
 			}
@@ -143,15 +141,8 @@ void my_pthread_exit(void *value_ptr) {
 	 * Change status to done, and yield the main context 
      * 
 	 */
-
 	if(sched->current_thread->threadID == 0){
-		// return;
-
-		//printf("size: %d, %d, %d\n", sched->MLQ_Running[0]->size, sched->MLQ_Running[1]->size, sched->MLQ_Running[2]->size);
-		//printf("id: %d\n", ((my_pthread_t *)sched->MLQ_Running[1]->head)->threadID);
-		// pthread_exit(value_ptr);
-		// dequeue(sched->MLQ_Running[sched->current_thread->priority_level]);
-		//exit(0);
+		exit(0);
 	}
     sched->current_thread->return_value = value_ptr;
 	// value_ptr = sched->current_thread->return_value;
@@ -165,42 +156,40 @@ int my_pthread_join(my_pthread_t thread, void **value_ptr) {
 	// 	printf("Not thread");
 	// 	return FAIL;
 	// }
-	my_pthread_t * child_thread = thread.thread_address;
-	child_thread->parent_thread = sched->current_thread;
+
+	my_pthread_t * join_thread = thread.thread_address;
+	join_thread->parent_thread = sched->current_thread;
 	sched->current_thread->thread_status = BLOCKED; // same as WAITING
-	while(child_thread->thread_status != DONE){
-
+	while(join_thread->thread_status != DONE){
 		my_pthread_yield();
-
-		// // return 0;
-		// exit(0);
 	}
 	if(value_ptr != NULL){
-		value_ptr = thread.return_value;
+		*value_ptr = thread.return_value;
 		// *value_ptr = sched->current_thread->return_value;
 	}
 	return 0;
 }
 
 int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const my_pthread_mutexattr_t *mutexattr) {
-	printf("Inside my_pthread_mutex_init\n");
+	//printf("Inside my_pthread_mutex_init\n");
     if(mutex == NULL){
     	printf("Invalid Mutex");
         return EINVAL;
     }
 
-    mutex_node * temp = (mutex_node *)malloc(sizeof(mutex_node));
-    temp->mutex_value = *mutex;
-    temp->mutex_status = UNLOCKED;
-    temp->waitlist = (queue *)malloc(sizeof(queue));
-    temp->waitlist->size = 0;
+    mutex_node * node = (mutex_node *)malloc(sizeof(mutex_node));
+	*mutex = node;
+    node->mutex_status = UNLOCKED;
+    node->waitlist = (queue *)malloc(sizeof(queue));
+    node->waitlist->size = 0;
     // No Mutex_List exists, this is first mutex	
     if(mutex_list == NULL){
     	mutex_list = (queue *)malloc(sizeof(queue));
     	mutex_list->size = 0;
+		enqueue(mutex_list, node);
     }
 
-    printf("Mutex Initialized and added to mutex_list\n");
+    //printf("Mutex Initialized and added to mutex_list\n");
 
     return 0;
     
@@ -213,7 +202,7 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex) {
 	}
 	mutex_node * mutex_to_lock = getMutexNode(*mutex);
 	if(mutex_to_lock == NULL){
-		printf("Mutex not initialized");
+		printf("Mutex not initialized Cant lock");
 		return -1;
 	}
 
@@ -251,17 +240,22 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex) {
 	}
 	my_pthread_t * next_thread;
 	if(mutex_to_unlock->mutex_status == LOCKED){
+		if(mutex_to_unlock->waitlist->size > 0){		
 		next_thread = dequeue(mutex_to_unlock->waitlist);
 		// add thread to scheduller
 		int level = next_thread->priority_level;
 		enqueue(sched->MLQ_Running[level], next_thread);
+		}
+	else{
+		mutex_to_unlock->mutex_status = UNLOCKED;
 	}
+}
 	else{
 		printf("Mutex is already unlocked\n");
 		return -1;
 	}
 	mutex_to_unlock->mutex_status = UNLOCKED;
-	printf("Mutex became unlocked.... free to lock");
+	printf("Mutex became unlocked.... free to lock\n");
 
 
 	return 0;
@@ -409,7 +403,7 @@ void initializeScheduler(){
 mutex_node * getMutexNode(int mutex){
 	mutex_node * mutex_node_to_return = mutex_list->head;
 	while(mutex_node_to_return != NULL) {
-		if(mutex_node_to_return->mutex_value == mutex){
+		if(mutex_node_to_return == mutex){
 			break;
 		}
 		else{
