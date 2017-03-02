@@ -27,60 +27,57 @@
 
 /*************************/
 
-enum thread_status {PAUSED, BLOCKED, DONE, RUNNING, ACTIVE};
-enum mutex_status {LOCKED, UNLOCKED};
+enum thread_status {READY, RUNNING, YIELDED, DONE}
+enum mutex_status {LOCKED, UNLOCKED}
+
+// Types
+typedef struct {
+    ucontext_t current_context;
+    my_pthread_t * next_thread;
+    enum thread_state state;
+    int thread_id;
+    int num_quanta;
+    struct timeval first_exec;
+    struct timeval last_exec;
+    int priority_level;
+    void * return_value;
+} my_pthread_t;
+
+typedef struct {
+
+} my_pthread_attr_t;
+
+typedef struct{
+    queue * MLQ_Running[3];
+    queue * wait_queue;
+    my_pthread_t main_thread;
+    my_pthread_t current_thread;
+    int total_threads;
+} scheduler;
+
+scheduler * sched;
+
+typedef struct my_pthread_mutex_t_node{
+    my_pthread_mutex_t  mutex_value     // Mutex value
+    struct mutex_node * next;           // Pointer to next mutex in mutex list      
+    enum mutex_status                   // Status locked or unlocked
+    struct my_pthread_t * waitlist      // List of threads waiting on this mutex
+
+} mutex_node;
+
+struct my_pthread_mutex_t_node * mutex_list
+
 
 //these are placeholders for your actual implementation
 typedef int my_pthread_mutex_t;
 typedef int my_pthread_mutexattr_t;
 
-// Types
-typedef struct my_pthread_t {
-    struct my_pthread_t * next;
-    int threadID;
-    ucontext_t  thread_context;
-    struct my_pthread_t * thread_address;
-    struct my_pthread_t * parent_thread; 
-    // struct my_pthread_mutex_t * mutex_flag; // NULL if no mutex
-    enum thread_status thread_status;
-    int priority_level;
-    void * return_value;
-} my_pthread_t;
 
 typedef struct queue {
     void * head;
     void * tail;
     int size;
 } queue;
-
-
-typedef struct {
-
-} my_pthread_attr_t;
-
-typedef struct {
-    queue * MLQ_Running[3];
-    queue * mutex_list;
-    my_pthread_t * current_thread;
-    int total_threads;
-    my_pthread_t * main_thread;
-} scheduler;
-
-
-
-typedef struct my_pthread_mutex_t_node{
-    struct mutex_node * next;           // Pointer to next mutex in mutex list      
-    my_pthread_mutex_t  mutex_value;     // Mutex value
-    enum mutex_status mutex_status;                   // Status locked or unlocked
-    struct queue * waitlist;      // List of threads waiting on this mutex
-
-} mutex_node;
-
-struct queue * mutex_list;
-
-mutex_node * getMutexNode(int mutex);
-void initializeScheduler();
-void initialize_context(ucontext_t * context);
 
 void init_queue(queue * q);
 void enqueue(queue * q, void * thread);
@@ -120,7 +117,7 @@ int my_pthread_join(my_pthread_t thread, void **value_ptr);
     Initializes a my_pthread_mutex_t created by the calling thread. 
     Attributes are ignored.
 */
-int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const my_pthread_mutexattr_t *mutexattr);
+int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const m_pthread_mutexattr_t *mutexattr);
 
 /**
     Locks a given mutex, other threads attempting to access this 
