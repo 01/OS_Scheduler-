@@ -186,7 +186,7 @@ typedef struct my_pthread_mutex_int {
 #define MAX_PRIORITIES 60
 #define DEFAULT_PRIORITY 29
 // by assignment we need to create 'high priority' threads
-#define CREATE_THREAD_PRIORITY 30
+#define CREATE_THREAD_PRIORITY 29
 #define UPDATE_DELAY_SECS  5
 
 
