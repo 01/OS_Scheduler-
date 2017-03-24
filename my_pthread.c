@@ -12,17 +12,6 @@
 #include <sys/mman.h>
 
 
-/*
-  sleep(int x)
-  int my_pthread_join(pthread_t thread, void **value_ptr);
-  int my_pthread_mutex_lock(my_pthread_mutex_t *mutex);
-  int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex);
-  int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex)
-
-
-
-*/
-
 // From glib
 // mapping for general registers in ucontext
 enum
@@ -66,66 +55,6 @@ static int  __fegetenv (struct _libc_fpstate *envp)
   return 0;
 }
 
-
-
-
-
-#if 0
-
-A few structures from glib
-
-struct _libc_fpstate
-{
-  /* 64-bit FXSAVE format.  */
-  __uint16_t            cwd;
-  __uint16_t            swd;
-  __uint16_t            ftw;
-  __uint16_t            fop;
-  __uint64_t            rip;
-  __uint64_t            rdp;
-  __uint32_t            mxcsr;
-  __uint32_t            mxcr_mask;
-  struct _libc_fpxreg   _st[8];
-  struct _libc_xmmreg   _xmm[16];
-  __uint32_t            padding[24];
-};
-
-/* Structure to describe FPU registers.  */
-typedef struct _libc_fpstate *fpregset_t;
-
-/* Context to describe whole processor state.  */
-typedef struct
-  {
-    gregset_t gregs;
-    /* Note that fpregs is a pointer.  */
-    fpregset_t fpregs;
-    __extension__ unsigned long long __reserved1 [8];
-} mcontext_t;
-
-typedef struct ucontext
-  {
-    unsigned long int uc_flags;
-    struct ucontext *uc_link;
-    stack_t uc_stack;
-    mcontext_t uc_mcontext;
-    __sigset_t uc_sigmask;
-    struct _libc_fpstate __fpregs_mem;
-  } ucontext_t;
-
-
-
-
-#endif
-
-/*
-  Todo:
-  remove running thread from queue
-  use swap
-
-  use sleep() only for current thread
-
-
-*/
 
 struct my_pthread_mutex_int;
 
@@ -186,7 +115,7 @@ typedef struct my_pthread_mutex_int {
 #define MAX_PRIORITIES 60
 #define DEFAULT_PRIORITY 29
 // by assignment we need to create 'high priority' threads
-#define CREATE_THREAD_PRIORITY 29
+#define CREATE_THREAD_PRIORITY 30
 #define UPDATE_DELAY_SECS  5
 
 
@@ -528,7 +457,6 @@ void printSigset(const sigset_t *sigset)
 
 
 static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * next_thread, my_pthread_int_t * current_thread) {
-#if 1
     // it must be alive thread
     assert(next_thread->is_done == 0);
     if(current_thread != NULL) {
@@ -536,50 +464,6 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
     } else {
        setcontext(&(next_thread->context));
     }
-#else
-    ucontext_t * new_ctx = &(next_thread->context);
-    struct _libc_fpstate * old_fpstate = sig_context->uc_mcontext.fpregs;
-    // it must be alive thread
-    assert(next_thread->is_done == 0);
-
-    if(current_thread != NULL ) {
-        // save old ctx 
-        ucontext_t * old_ctx = &(current_thread->context);
-        old_ctx->uc_flags = sig_context->uc_flags;
-        //old_ctx->uc_stack = sig_context->uc_stack;
-        old_ctx->uc_sigmask = sig_context->uc_sigmask;
-        old_ctx->uc_mcontext = sig_context->uc_mcontext;
-        if( sig_context->uc_mcontext.fpregs != NULL ) {
-             old_ctx->__fpregs_mem = *(old_fpstate);
-        } else {
-            __fegetenv(&(old_ctx->__fpregs_mem));
-        }
-        old_ctx->uc_mcontext.fpregs = &(old_ctx->__fpregs_mem);
-        current_thread->not_new = 1;
-    }
-
-    //sig_context->uc_stack = new_ctx->uc_stack;
-    if(!next_thread->not_new) { 
-        new_ctx->uc_flags = sig_context->uc_flags;
-        new_ctx->uc_mcontext.gregs[REG_EFL] = sig_context->uc_mcontext.gregs[REG_EFL];
-        new_ctx->uc_mcontext.gregs[REG_CSGSFS] = sig_context->uc_mcontext.gregs[REG_CSGSFS];
-        new_ctx->uc_mcontext.gregs[REG_ERR] = sig_context->uc_mcontext.gregs[REG_ERR];
-        new_ctx->uc_mcontext.gregs[REG_TRAPNO] = sig_context->uc_mcontext.gregs[REG_TRAPNO];
-        new_ctx->uc_mcontext.gregs[REG_OLDMASK] = sig_context->uc_mcontext.gregs[REG_OLDMASK];
-        new_ctx->uc_mcontext.gregs[REG_CR2] = sig_context->uc_mcontext.gregs[REG_CR2];
-    }
-
-    sig_context->uc_flags = new_ctx->uc_flags;
-    sig_context->uc_sigmask = new_ctx->uc_sigmask;
-    sig_context->uc_mcontext = new_ctx->uc_mcontext;
-    
-    if( old_fpstate != NULL ) {
-        *old_fpstate = new_ctx->__fpregs_mem;
-        sig_context->uc_mcontext.fpregs = old_fpstate;
-    } else {
-        sig_context->uc_mcontext.fpregs = &(new_ctx->__fpregs_mem);
-    }
-#endif
 
 }
 
@@ -817,56 +701,6 @@ static int ts_init() {
 
     return 0;
 }
-
-#if 0
-void ts_sleep(my_pthread_int_t * t) {
-    if (t->ts_blocked)
-        return;
-    extract(&__ready_threads[t->ts_priority], t);
-    insert_at_tail(&__blocked_threads, t);
-    t->ts_blocked = 1;
-    if (t == __current_thread) {
-        __current_thread = NULL;
-        getcontext(&(t->context));
-        if (__current_thread == NULL) {
-            assert(!current_thread_in_queue());
-            ts_schedule();
-        }
-    }
-}
-
-void ts_wakeup(my_pthread_int_t * t) {
-    if (!t->ts_blocked)
-        return;
-    extract(&__blocked_threads, t);
-    if (t->ts_dispwait > __dispatch_control_table[t->ts_priority].ts_maxwait) {
-        t->ts_priority = __dispatch_control_table[t->ts_priority].ts_slpret;
-        t->ts_timeleft = __dispatch_control_table[t->ts_priority].ts_quantum;
-        t->ts_dispwait = 0;
-    }
-    t->ts_blocked = 0;
-
-    if (t->ts_priority > __current_thread->ts_priority) {
-        insert_at_head(&__ready_threads[t->ts_priority], t);
-
-        my_pthread_int_t * cr = (my_pthread_int_t *)__current_thread;
-        // move CR to its queue front
-        if (cr->ts_prev != NULL) {
-            extract(&__ready_threads[cr->ts_priority], cr);
-            insert_at_head(&__ready_threads[cr->ts_priority], cr);
-        }
-        __current_thread = NULL;
-        getcontext(&(cr->context));
-        if (__current_thread == NULL) {
-            assert(!current_thread_in_queue());
-            ts_schedule();
-        }
-    }
-    else {
-        insert_at_tail(&__ready_threads[t->ts_priority], t);
-    }
-}
-#endif
 
 static void thr_func() {
     my_pthread_int_t * t = (my_pthread_int_t *)__current_thread;

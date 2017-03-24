@@ -1,5 +1,7 @@
 #pragma once
 
+#if !defined(my_pthread_create) //for system override
+
 struct my_pthread_int;
 typedef  struct my_pthread_int * my_pthread_t;
 typedef void *  my_pthread_attr_t;
@@ -16,3 +18,4 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex);
 int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex);
 int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex);
 
+#endif
