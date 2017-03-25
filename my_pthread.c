@@ -14,47 +14,6 @@
 
 // From glib
 // mapping for general registers in ucontext
-enum
-{
-  REG_R8 = 0,
-  REG_R9,
-  REG_R10,
-  REG_R11,
-  REG_R12,
-  REG_R13,
-  REG_R14,
-  REG_R15,
-  REG_RDI,
-  REG_RSI,
-  REG_RBP,
-  REG_RBX,
-  REG_RDX,
-  REG_RAX,
-  REG_RCX,
-  REG_RSP,
-  REG_RIP,
-  REG_EFL,
-  REG_CSGSFS,        /* Actually short cs, gs, fs, __pad0.  */
-  REG_ERR,
-  REG_TRAPNO,
-  REG_OLDMASK,
-  REG_CR2
-};
-
-
-// sourced from mathlib 
-static int  __fegetenv (struct _libc_fpstate *envp)
-{
-  __asm__ ("fnstenv %0\n"
-       /* fnstenv changes the exception mask, so load back the
-          stored environment.  */
-       "fldenv %0\n"
-       "stmxcsr %1" : "=m" (*envp), "=m" (envp->mxcsr));
-
-  /* Success.  */
-  return 0;
-}
-
 
 struct my_pthread_mutex_int;
 
@@ -115,7 +74,7 @@ typedef struct my_pthread_mutex_int {
 #define MAX_PRIORITIES 60
 #define DEFAULT_PRIORITY 29
 // by assignment we need to create 'high priority' threads
-#define CREATE_THREAD_PRIORITY 30
+#define CREATE_THREAD_PRIORITY 29
 #define UPDATE_DELAY_SECS  5
 
 
@@ -348,7 +307,7 @@ static void ts_all_done() {
     exit(0);
 }
 
-#define THREAD_STACK_SIZE  (8*1024*1024)
+#define THREAD_STACK_SIZE sysconf(_SC_PAGE_SIZE)
 #if !defined(MAP_STACK)
 #define MAP_STACK 0
 #endif
@@ -357,15 +316,15 @@ static void ts_make_stack(my_pthread_int_t * t) {
     t->context.uc_stack.ss_size = THREAD_STACK_SIZE;
     t->context.uc_stack.ss_sp = 
             (char*)mmap(NULL, t->context.uc_stack.ss_size, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS| MAP_STACK, -1, 0);
-        t->stack_size = THREAD_STACK_SIZE;
+    t->stack_size = THREAD_STACK_SIZE;
     if ((char*)MAP_FAILED == t->context.uc_stack.ss_sp) {
         perror("malloc");
         exit(-1);
     }
-        t->stack = t->context.uc_stack.ss_sp;
-        t->context.uc_stack.ss_size -= 256;
+    t->stack = t->context.uc_stack.ss_sp;
+    t->context.uc_stack.ss_size -= 256;
 
-        //printf("Making stack for %s from %p to %p\n",t->thread_name,t->stack, t->stack+t->stack_size);
+    //printf("Making stack for %s from %p to %p\n",t->thread_name,t->stack, t->stack+t->stack_size);
 }
 
 
@@ -430,9 +389,9 @@ static void block_signals(sigset_t * current) {
     sigaddset(&mask, SIGALRM);
     sigaddset(&mask, SIGUSR1);
     if( sigprocmask(SIG_BLOCK, &mask, current) != 0) {
-            perror("Cannot block signal");
-            exit(-1);
-        }
+        perror("Cannot block signal");
+        exit(-1);
+    }
 }
 
 void ublock_signals(const sigset_t * current) {
@@ -675,11 +634,9 @@ void my_pthread_exit(void *value_ptr){
 }
 
 
-// make this call during libary load
-// unlike C++ there is no easy way to execute a function before main()
+// make this function execute before main
 static int ts_init(void) __attribute__((constructor));
 
-// must be called from main thread
 static int ts_init() {
     my_pthread_int_t * t;
 
@@ -692,9 +649,9 @@ static int ts_init() {
     __update_clock = __current_clock + UPDATE_DELAY_SECS*CLOCKS_PER_SEC;
 
     ts_init_thread(t);
-        t->is_main = 1;
+    t->is_main = 1;
     __current_thread = t;
-        strncpy(t->thread_name,"main",sizeof(t->thread_name));
+    strncpy(t->thread_name,"main",sizeof(t->thread_name));
 
     set_handler((void(*)(int, siginfo_t *, void *))ts_tick);
     set_timer(10, (void(*)(int, siginfo_t *, void *))ts_tick);
@@ -708,7 +665,6 @@ static void thr_func() {
     void *rc = t->entry_point(t->entry_arg);
     my_pthread_exit(rc);
 }
-
 
 
 int my_pthread_create(my_pthread_t * thread, my_pthread_attr_t * attr, void *(*function)(void*), void * arg) {
@@ -915,8 +871,14 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
 }
 
 ///////////////////////////////////////////////////////
-
+//DISPATCH TABLE: index of each 5-element array represents parameters for threads off that priority
+//[0] number of quanta to run for
+//[1] new priority after done running
+//[2] new priority after thread is woken up (from my_pthread_join)
+//[3] number of seconds to run for before being aged
+//[4] new priority after thread is aged
 static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
+    {10, 0, 50, 2, 50}, //0
     {10, 0, 50, 2, 50},
     {10, 0, 50, 2, 50},
     {10, 0, 50, 2, 50},
@@ -926,8 +888,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {10, 0, 50, 2, 50},
     {10, 0, 50, 2, 50},
     {10, 0, 50, 2, 50},
-    {10, 0, 50, 2, 50},
-    {6, 0, 51, 2, 51},
+    {6, 0, 51, 2, 51}, //10
     {6, 1, 51, 2, 51},
     {6, 2, 51, 2, 51},
     {6, 3, 51, 2, 51},
@@ -937,7 +898,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {6, 7, 51, 2, 51},
     {6, 8, 51, 2, 51},
     {6, 9, 51, 2, 51},
-    {5, 10, 52, 2, 52},
+    {5, 10, 52, 2, 52}, //20
     {5, 11, 52, 2, 52},
     {5, 12, 52, 2, 52},
     {5, 13, 52, 2, 52},
@@ -947,7 +908,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {5, 17, 52, 2, 52},
     {5, 18, 52, 2, 52},
     {5, 19, 52, 2, 52},
-    {4, 20, 53, 2, 53},
+    {4, 20, 53, 2, 53}, //30
     {4, 21, 53, 2, 53},
     {4, 22, 53, 2, 53},
     {4, 23, 53, 2, 53},
@@ -957,7 +918,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {4, 27, 54, 2, 54},
     {4, 28, 54, 2, 54},
     {4, 29, 54, 2, 54},
-    {3, 30, 55, 2, 55},
+    {3, 30, 55, 2, 55}, //40
     {3, 31, 55, 2, 55},
     {3, 32, 55, 2, 55},
     {3, 33, 55, 2, 55},
@@ -967,7 +928,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {3, 37, 58, 2, 58},
     {3, 38, 58, 2, 58},
     {3, 39, 58, 2, 59},
-    {3, 40, 58, 2, 59},
+    {3, 40, 58, 2, 59}, //50
     {3, 41, 58, 2, 59},
     {3, 42, 58, 2, 59},
     {3, 43, 58, 2, 59},
@@ -976,7 +937,7 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {3, 46, 58, 2, 59},
     {3, 47, 58, 2, 59},
     {3, 48, 58, 2, 59},
-    {2, 49, 59, 32000, 59}
+    {2, 49, 59, 32000, 59} //59
 };
 
 
