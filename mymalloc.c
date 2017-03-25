@@ -8,16 +8,16 @@ int arrayInitialized=0;
 
 /* Memory for main Memory and abstraction for page tables being contiguous
  *
- *  8MB is 8,388,608 bytes 
- * 
+ *  8MB is 8,388,608 bytes
+ *
  *  Main_Memory - Ucontext space = 8040607 Bytes / (4096 (PAGE_SIZE) + 2 (MetaData Size) = 1963ish Pages
- *  
+ *
  *  2000 indexable pages requires 11 bits (will need to use 2 bytes)
  *
 /* Physical Memory Diagram ************************************
  *----------------------------------------------------------  *
  *- ucontext's   -  Page Table      -    Physical Memory   -  *                                     -
- *- 348000Bytes  -   4000 bytes     -     8,036,608 bytes  -  *           
+ *- 348000Bytes  -   4000 bytes     -     8,036,608 bytes  -  *
  *----------------------------------------------------------  *
  **************************************************************
  *
@@ -26,7 +26,7 @@ int arrayInitialized=0;
  * - Page Index   -                 Meta Data                - *
    -              -------------------------------------------- *
  * - 16 bits      -  Contiguous/Not -  Free/Not  - Block Size- *
- * -              -     1 but       -   1 bit    -   14 bits - * 
+ * -              -     1 but       -   1 bit    -   14 bits - *
  * ----------------------------------------------------------- *
  ***************************************************************
 */
@@ -34,7 +34,7 @@ int arrayInitialized=0;
 // Meta Data 4 byte int. 3 bytes size (negative allocated), 4th byte threadID
 
 
-
+// TODO: Make sure this is memaligned!!
 static char MAIN_MEMORY[MEMORY_SIZE];
 
 
@@ -43,23 +43,30 @@ static char MAIN_MEMORY[MEMORY_SIZE];
 
 int test = 0;
 
+
+// Set up the main memory space for OS + reserved space + heap
+// TODO: What is the OS Region vs. what is the Heap Page Table?
+//       Should the global page table be within the OS region?
 void initializeMemory(){
- 
+
   arrayInitialized = 1;
   char * ptr = MAIN_MEMORY;
+
+  // insert metadata at begining of each page block
   int i = 0;
   for(; i < numPages; i++){
-      *(int *) ptr = (PAGE_SIZE - sizeof(int));
-      ptr += PAGE_SIZE;
-      
+    // sizeof(meta data) == sizeof(int)
+    *(int *) ptr = (PAGE_SIZE - sizeof(int));
+    ptr += PAGE_SIZE;
   }
 
+  // Save ptr to each key memory area in main memory
+  // TODO:  Create definition for memManager struct
   memManager manager;
   * (memManager *) (Main_Memory + 2) = manager;
   ((Main_Memory *)manager)->OS_Region = (Main_Memory + PAGE_SIZE);
   ((Main_Memory *)manager)->Reserved_Page_Table = (MAIN_MEMORY + (401 *PAGE_SIZE));
- ((Main_Memory *)manager)->Heap_Page_Table = ((Main_Memory *)manager)->Reserved_Page_Table + (200 * sizeof(short));
-
+  ((Main_Memory *)manager)->Heap_Page_Table = ((Main_Memory *)manager)->Reserved_Page_Table + (200 * sizeof(short));
 
   if(test){
     i = 0;
@@ -70,7 +77,7 @@ void initializeMemory(){
     }
   }
 
-  // Scheduler gets one page 
+  // Scheduler gets one page
   // *(scheduler *) MEMORY[0]= main;
 
   // Initialize reserved OS for 200 Threads 2 Pages per 400 pages
@@ -81,10 +88,10 @@ void initializeMemory(){
   int k = 0;
   short * ptr1 = memManager->Reserved_Page_Table; // Start of page table
   for(; k < numPages; k++){
+    // TODO: is this bitShift(...) an actual function?
     *ptr1 = bitShift(k, 8);
     ptr1++;
   }
-
 
   if(test){
     i = 0;
@@ -94,141 +101,137 @@ void initializeMemory(){
       ptr+=2;
     }
   }
-
-
 }
 
 
 /*
  * The Defrag method is a method called each time a pointer is successfully freed. its purpose is to combine neighboring free memory blocks into a single memory
- * blocks. The method checks a memory block to see if it is free or allocated. If it is free, a loop begins combining the consecective free memory blocks until 
+ * blocks. The method checks a memory block to see if it is free or allocated. If it is free, a loop begins combining the consecective free memory blocks until
  * neighbor memory block is not a free memory block This defrag method takes in no inputs, and assumess access to the memory it is going to defrag.
- * Though be more efficient to end the method once two free neighboring memory blocks are combined and posssibly a 3rd, since in this implementation 
- * there is no scenario where more then 3 consequtive memory blocks are all free, the method continues through the whole memory so that this method can 
+ * Though be more efficient to end the method once two free neighboring memory blocks are combined and posssibly a 3rd, since in this implementation
+ * there is no scenario where more then 3 consequtive memory blocks are all free, the method continues through the whole memory so that this method can
  * defrag an array
 */
 /*void defrag(){
-	char * tracker = myblock;
-  	meta meta_size1 = * (meta *) tracker;
-  	meta block_size1 = (meta_size1 - (meta_size1%2));
-  	meta block_size2 =0; 
-  	meta meta_size2 = 0;
-  	if((tracker + 2 + block_size1)<&myblock[4998]){
-  		meta_size2 = * (meta *) (tracker +2 + block_size1);
-  		block_size2 = (meta_size2 - (meta_size2%2));
-  	}				
-  	else {return;}
-  
-  	while((tracker + 2 + block_size1)< &myblock[4998]){			// Conditional loop to cycle through all memory blocks in the main memory
-  		meta_size1 = * (meta *) tracker;
-  		block_size1 = (meta_size1 - (meta_size1%2));
-  		if((tracker + 2 + block_size1)<&myblock[4997]){
-  		meta_size2 = * (meta *) (tracker +2 + block_size1);
-  		block_size2 = (meta_size2 - (meta_size2%2));
-  	}				
-  	else return;
-  		
-  		while((meta_size1%2==0) && (meta_size2%2==0) && (tracker + 2 + block_size1)< &myblock[4997]){ // Conditional loop to continue combining neighboring free memory blocks until 
-  			
-    		*(meta *)tracker += (block_size2 + 2);
-    		return;	
-    		meta_size1 = * (meta *) tracker;
-  			block_size1 = (meta_size1 - (meta_size1%2));
-  			if((tracker + 2 + block_size1)<&myblock[4998]){
-  				meta_size2 = * (meta *) (tracker +2 + block_size1);
-  				block_size2 = (meta_size2 - (meta_size2%2));
-  			}		
-  			else return;									// the free memory block does nto have a free neighbor 
-    		
-    	}
+  char * tracker = myblock;
+    meta meta_size1 = * (meta *) tracker;
+    meta block_size1 = (meta_size1 - (meta_size1%2));
+    meta block_size2 =0;
+    meta meta_size2 = 0;
+    if((tracker + 2 + block_size1)<&myblock[4998]){
+      meta_size2 = * (meta *) (tracker +2 + block_size1);
+      block_size2 = (meta_size2 - (meta_size2%2));
+    }
+    else {return;}
 
- 		tracker += (2 + block_size1);
+    while((tracker + 2 + block_size1)< &myblock[4998]){      // Conditional loop to cycle through all memory blocks in the main memory
+      meta_size1 = * (meta *) tracker;
+      block_size1 = (meta_size1 - (meta_size1%2));
+      if((tracker + 2 + block_size1)<&myblock[4997]){
+      meta_size2 = * (meta *) (tracker +2 + block_size1);
+      block_size2 = (meta_size2 - (meta_size2%2));
+    }
+    else return;
+
+      while((meta_size1%2==0) && (meta_size2%2==0) && (tracker + 2 + block_size1)< &myblock[4997]){ // Conditional loop to continue combining neighboring free memory blocks until
+
+        *(meta *)tracker += (block_size2 + 2);
+        return;
+        meta_size1 = * (meta *) tracker;
+        block_size1 = (meta_size1 - (meta_size1%2));
+        if((tracker + 2 + block_size1)<&myblock[4998]){
+          meta_size2 = * (meta *) (tracker +2 + block_size1);
+          block_size2 = (meta_size2 - (meta_size2%2));
+        }
+        else return;                  // the free memory block does nto have a free neighbor
+
+      }
+
+     tracker += (2 + block_size1);
     }
 }
 
 /*
  * myFree is a custom replacement method to replace the C standard Library's Free method for freeing dynamocially allocated memory
- */
+*/
 
 void myfree(void * ptrFree, char * file, int line){
-  
-  	if (!arrayInitialized){
-  		initializeMemory();
-    	arrayInitialized = 1;
+
+  if (!arrayInitialized){
+    initializeMemory();
+    arrayInitialized = 1;
+  }
+  if(ptrFree == NULL){
+    printf("Pointer is NULL\n");
+    return;
+  }
+
+  char * ptrFree1 = (char *) ptrFree;
+
+  if(ptrFree1 < MEMORY || ptrFree1 > (Main_Memory + MEMORY_SIZE + Swap_Size)){
+    printf("Pointer ourside of mmemory\n");
+    return;
+  }
+
+  int pageIndex = bitShift(ptrFree1, -16);
+  int offset = bitShift(ptrFree1, 16);
+  int meta_size, block_size;
+  int frameNumber = *(short *)(memManger->Reserved_Page_Table + (pageIndex * 2));
+  char * tracker = memManager->heapStart + (frameNumber * PAGE_SIZE);
+
+  while(tracker<=(ptrFree1 + PAGE_SIZE)){
+    block_size = abs(*(int *)tracker);
+
+    if(tracker==(ptrFree1-2)){
+      if((*(int *)tracker < 0){
+        *(int *)tracker = abs(*(int *)tracker);
+        defrag();
+        return;
+      }
+      else{
+        printf("This pointer is a free block of memory, can not double free\n");
+        return;
+      }
     }
-    if(ptrFree == NULL) {
-    	printf("Pointer is NULL\n"); 
-    	return;
-    }
 
-	char * ptrFree1 = (char *) ptrFree;
-  
-  	if(ptrFree1 < MEMORY || ptrFree1 > (Main_Memory + MEMORY_SIZE + Swap_Size)){ printf("Pointer ourside of mmemory\n"); return;}
-
-  	
-    
-    int pageIndex = bitShift(ptrFree1, -16);
-    int offset = bitShift(ptrFree1, 16);
-    int meta_size, block_size;
-    int frameNumber = *(short *)(memManger->Reserved_Page_Table + (pageIndex * 2));
-    char * tracker = memManager->heapStart + (frameNumber * PAGE_SIZE);
-
-  	while(tracker<=(ptrFree1 + PAGE_SIZE)){
-  		block_size = abs(*(int *)tracker);
-
-   		if(tracker==(ptrFree1-2)){
-   			if((*(int *)tracker < 0){
-    		*(int *)tracker = abs(*(int *)tracker);
-      		defrag();
-      		return;
-    		}
-    		else{
-    			printf("This pointer is a free block of memory, can not double free\n");
-    			return;
-    		}
-    	}
-
-    	tracker+=(2+block_size);
+    tracker+=(2+block_size);
   }
   printf("Pointer was not an allocated block\n");
   return;
-
 }
-*/
 
+void * myallocate(int size, const char* FILENAME, const int LINE, int libRequest) {
 
-void * myallocate(int size, const char* FILENAME, const int LINE) {
-	 
-  // If memory not initialized, initialize it //TODO: Initialize scheduler and memory manager
- if (!arrayInitialized){
-  	arrayInitialized = 1;
+  // If memory not initialized, initialize it
+  // TODO: Initialize scheduler and memory manager
+  if (!arrayInitialized){
+    arrayInitialized = 1;
     initializeMemory();
   }
 
-// If size is 0 or negative fail and return null
-	if (size <= 0){
-  	printf("Must be greater than 0\n");
-  	return NULL;
-	}
+  // If size is 0 or negative fail and return null
+  if (size <= 0){
+    printf("Must be greater than 0\n");
+    return NULL;
+  }
 
   int currentBlockSize, initialBlockSize;
 
-   
   if(size > MEMORY_SIZE-sizeof(int)){
     printf("Size bigger then memory");
   }
-  
+
   if(LibraryReq){
     // find free reserved OS Thread location
     return allocateThread();
   }
-    
   else { // Find free Page for Heaps
     return threadAllocate();
   }
 }
 
 int findFreeOSPage(){
+  // TODO: Revise to actually retrieve the Reserved_Page_Table ptr value
   char * ptr = Reserved_Page_Table;
   int i = 0;
   for(; i < 400; i++){ // First 400 Page Indexs are for OS Pages
@@ -244,8 +247,11 @@ int findFreeOSPage(){
 }
 
 int findFreeHeapPage(){
-  har * ptr = Heap_Page_Table;
+  // TODO: Revise to actually retrieve the Heap_Page_Table ptr value
+  char * ptr = Heap_Page_Table;
   int i = 0;
+  // TODO:  numPages is undefined in this scope
+  //        Not sure where numPages is coming from...
   for(; i < (numPages *2)-400; i++){ // Search pages after the OS reserved Pages
     if(*(short *)ptr > 0 && (*(short *)ptr < MAIN_MEMORY + MEMORY_SIZE){
       *(short *) ptr = (*(short *) ptr)* -1;
@@ -256,30 +262,30 @@ int findFreeHeapPage(){
 }
 
 void * libraryAllocate(int size){
-char* ptr = (MAIN_MEMORY + PAGE_SIZE); // First page after Scheduler
-      int k = 0;
-      for(; k < 200; k++){   // Sear *h through 200 thread contexts  
-        if(*(int *) ptr > 0){
-          initialBlockSize = abs(*(int *) ptr);
-          *(int *) ptr = (size * -1);
-          currentBlockSize = abs(*(int *) ptr);
-          *(int *) (ptr + sizeof(int) + currentBlockSize) = (initialBlockSize - sizeof(int) - currentBlockSize);
-           int pageNum = (ptr - MAIN_MEMORY) / PAGE_SIZE;
-           int freePageIndex =  findFreeOSPage();
-           *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) = pageNum * -1;
-           *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) + 1) = -1 * (pageNum+1);
-           return (void *) (ptr + 2); // need to bitmask ptr to shift 13 bits 
-        }
-        ptr += PAGE_SIZE;
-      }
+  char* ptr = (MAIN_MEMORY + PAGE_SIZE); // First page after Scheduler
+  int k = 0;
+  for(; k < 200; k++){   // Sear *h through 200 thread contexts
+    if(*(int *) ptr > 0){
+      initialBlockSize = abs(*(int *) ptr);
+      *(int *) ptr = (size * -1);
+      currentBlockSize = abs(*(int *) ptr);
+      *(int *) (ptr + sizeof(int) + currentBlockSize) = (initialBlockSize - sizeof(int) - currentBlockSize);
+      int pageNum = (ptr - MAIN_MEMORY) / PAGE_SIZE;
+      int freePageIndex =  findFreeOSPage();
+      *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) = pageNum * -1;
+      *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) + 1) = -1 * (pageNum+1);
+      return (void *) (ptr + 2); // need to bitmask ptr to shift 13 bits
+    }
+    ptr += PAGE_SIZE;
+  }
 
-            printf("Max threads reached\n");
-            return NULL;
+  printf("Max threads reached\n");
+  return NULL;
 }
 
 void * threadAllocate(unsigned int size){
   int * ptr = memManger->Reserved_Page_Table ); // Point to begining of Page Table
-    
+
       pthread_init_t * currentThread = getThread(); // Need to implement
       if(currentThread->heap == NULL){
         int freePageIndex = findFreeHeapPage();
@@ -295,29 +301,29 @@ void * threadAllocate(unsigned int size){
       if(bitShift(*(int *) track, -16) != threadID){
         // pageFault find where page went
       }
-      
+
       while(track < (track + PAGE_SIZE)){
-  
+
         currBlocksize = bitShift(abs(*(int *)track), 8);
- 
+
         if (*(int *)track > 0 && currBlocksize >= size){  //check if location is free
           //leading byte of Page contains threadID maybe.....
-          *(int *)track = bitShift(size, 8) + threadID  //negative to signify allocated space 
+          *(int *)track = bitShift(size, 8) + threadID  //negative to signify allocated space
           *(int *)(track+size+2) = bitShift((currBlocksize - size -2), 8) + threadID;
           return (void *) bitShift((((track+2 - currentThread->heap)/PAGE_SIZE) + currentThread->heap), 16) + (track+2 -currentThread->heap);
         }
         if((track + currentBlocksize + 2) == (track + PAGE_SIZE){
           break;
         }
-        
+
         track += (currBlocksize +2);
       }
 
       //Makes here wasnt enough room on page, need to get another page.
 
       int pagesNeeded = (size -*(int *)track) / PAGE_SIZE;
-     // Manager will need to update table and associate with thread heap, 
-      
+     // Manager will need to update table and associate with thread heap,
+
       if(numFreePages() < pagesNeeded){
         if(freePage == NULL){
           // swap out from swapFile;
@@ -338,7 +344,7 @@ void * threadAllocate(unsigned int size){
 
 
     }
-  
+
   printf("Not Enough Space\n");
   return NULL;
 
@@ -391,7 +397,3 @@ int numFreeSwaps(){
   return freeSwaps;
 
 }
-
-
-
-
