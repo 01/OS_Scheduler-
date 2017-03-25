@@ -31,31 +31,37 @@ int arrayInitialized=0;
  ***************************************************************
 */
 
+// Meta Data 4 byte int. 3 bytes size (negative allocated), 4th byte threadID
 
 
-static char PAGE_TABLE[MEMORY_SIZE / PAGE_SIZE];
+
 static char MAIN_MEMORY[MEMORY_SIZE];
 
 
 /* ucontext_t struct size is 348 bytes. Assuming max 1000 threads system memory porition for ucontext's of threads
  * must be 348000 bytes. */
 
-int test = 1;
+int test = 0;
 
 void initializeMemory(){
  
   arrayInitialized = 1;
   char * ptr = MAIN_MEMORY;
   int i = 0;
-  for(; i < (MEMORY_SIZE / PAGE_SIZE); i++){
-    //printf("Makes it loop %i\n", i);
-      * (int *) ptr = (PAGE_SIZE - sizeof(int));
+  for(; i < numPages; i++){
+      *(int *) ptr = (PAGE_SIZE - sizeof(int));
       ptr += PAGE_SIZE;
-      //printf("makes it here\n");
+      
   }
 
+  memManager manager;
+  * (memManager *) (Main_Memory + 2) = manager;
+  ((Main_Memory *)manager)->OS_Region = (Main_Memory + PAGE_SIZE);
+  ((Main_Memory *)manager)->Reserved_Page_Table = (MAIN_MEMORY + (401 *PAGE_SIZE));
+ ((Main_Memory *)manager)->Heap_Page_Table = ((Main_Memory *)manager)->Reserved_Page_Table + (200 * sizeof(short));
 
-  if(0){
+
+  if(test){
     i = 0;
     ptr = MAIN_MEMORY;
     for(; i < (MEMORY_SIZE/PAGE_SIZE); i++){
@@ -73,17 +79,17 @@ void initializeMemory(){
 
   // First 401 Pages Reserved
   int k = 0;
-  short * ptr1 = (MAIN_MEMORY + (401 * PAGE_SIZE)); // Start of page table
-  for(; k < 6138; k++){
-    *ptr1 = k;
+  short * ptr1 = memManager->Reserved_Page_Table; // Start of page table
+  for(; k < numPages; k++){
+    *ptr1 = bitShift(k, 8);
     ptr1++;
   }
 
 
-  if(0){
+  if(test){
     i = 0;
-    ptr = MAIN_MEMORY + (401 * PAGE_SIZE);
-    for(; i < 6138; i++){
+    ptr = MAIN_MEMORY + Reserved_Page_Table;
+    for(; i < numPages; i++){
       printf("Page Index %i : Metadata = %i\n", i, *(short *)ptr);
       ptr+=2;
     }
@@ -142,14 +148,14 @@ void initializeMemory(){
 
 /*
  * myFree is a custom replacement method to replace the C standard Library's Free method for freeing dynamocially allocated memory
- 
+ */
 
 void myfree(void * ptrFree, char * file, int line){
   
-  /*	if (!arrayInitialized){
-  		*(meta *) myblock = (meta) 4998;
+  	if (!arrayInitialized){
+  		initializeMemory();
     	arrayInitialized = 1;
-    }*
+    }
     if(ptrFree == NULL) {
     	printf("Pointer is NULL\n"); 
     	return;
@@ -157,23 +163,27 @@ void myfree(void * ptrFree, char * file, int line){
 
 	char * ptrFree1 = (char *) ptrFree;
   
-  	if(ptrFree1 < &myblock[2] || ptrFree1>&myblock[4999]){ printf("Pointer ourside of mmemory\n"); return;}
+  	if(ptrFree1 < MEMORY || ptrFree1 > (Main_Memory + MEMORY_SIZE + Swap_Size)){ printf("Pointer ourside of mmemory\n"); return;}
 
-  	char * tracker = myblock;
-  	meta meta_size;
-  	meta block_size;
+  	
+    
+    int pageIndex = bitShift(ptrFree1, -16);
+    int offset = bitShift(ptrFree1, 16);
+    int meta_size, block_size;
+    int frameNumber = *(short *)(memManger->Reserved_Page_Table + (pageIndex * 2));
+    char * tracker = memManager->heapStart + (frameNumber * PAGE_SIZE);
 
-  	while(tracker<=(ptrFree1-2)){
-  		meta_size = *(meta *)tracker;
-  		block_size = *(meta *)tracker - (*(meta *)tracker%2);
+  	while(tracker<=(ptrFree1 + PAGE_SIZE)){
+  		block_size = abs(*(int *)tracker);
+
    		if(tracker==(ptrFree1-2)){
-   			if((*(meta *)tracker%2)==1){
-    		*(meta*)tracker = *(meta *)tracker-1;
+   			if((*(int *)tracker < 0){
+    		*(int *)tracker = abs(*(int *)tracker);
       		defrag();
       		return;
     		}
     		else{
-    			printf("This pointer is to a free block of memory, can not double free\n");
+    			printf("This pointer is a free block of memory, can not double free\n");
     			return;
     		}
     	}
@@ -188,103 +198,40 @@ void myfree(void * ptrFree, char * file, int line){
 
 
 void * myallocate(int size, const char* FILENAME, const int LINE) {
-	 if (!arrayInitialized){
-  	
-    	arrayInitialized = 1;
+	 
+  // If memory not initialized, initialize it //TODO: Initialize scheduler and memory manager
+ if (!arrayInitialized){
+  	arrayInitialized = 1;
+    initializeMemory();
+  }
 
-      initializeMemory();
-    }
+// If size is 0 or negative fail and return null
+	if (size <= 0){
+  	printf("Must be greater than 0\n");
+  	return NULL;
+	}
 
-  
-  	if (size <= 0){
-    	printf("Must be greater than 0\n");
-    	return NULL;
-  	}
-    
-   
-
-    int currentBlockSize, initialBlockSize;
-
-     
-    if(size > MEMORY_SIZE-sizeof(int)){
-      printf("Size bigger then memory");
-    }
-    
-
-     if(1){
-      // find free reserved OS Thread location
-      char* ptr = (MAIN_MEMORY + PAGE_SIZE); // First page after Scheduler
-      int k = 0;
-      for(; k < 200; k++){   // Sear *h through 200 thread contexts  
-        if(*(int *) ptr > 0){
-          initialBlockSize = abs(*(int *) ptr);
-          *(int *) ptr = (size * -1);
-          currentBlockSize = abs(*(int *) ptr);
-          *(int *) (ptr + sizeof(int) + currentBlockSize) = (initialBlockSize - sizeof(int) - currentBlockSize);
-           int pageNum = (ptr - MAIN_MEMORY) / PAGE_SIZE;
-           int freePageIndex =  findFreeOSPage();
-           *(short *)(MAIN_MEMORY + (401 * PAGE_SIZE) + freePageIndex) = pageNum;
-           *(short *)(MAIN_MEMORY + (401 * PAGE_SIZE) + freePageIndex + 1) = pageNum+1;
-           return (void *) (ptr + 2); // need to bitmask ptr to shift 13 bits 
-        }
-        ptr += PAGE_SIZE;
-      }
-
-
-
-      printf("Max threads reached\n");
-    }
-    
-   /* else{ // Find free Page for Heaps
-      meta * ptr = (MEMORY + (400 * PAGE_SIZE) + 1 ); // Point to begining of Page Table
- 		
-      pthread_init_t currentThread = getThread();
-      if(currentThread->heap == NULL){
-        int freePageIndex = findFreePage();
-        currentThread->heap = (MEMORY + (400 * PAGE_SIZE) + 1 + freePageIndex);
-      }
-      char * track = currentThread->heap;
-
-      int i = 0;
-
-      while(track < (track + PAGE_SIZE)){
-  
-        currBlocksize = Math.abs(*(int *)track);
- 
-        if (*(int *)track > 0 && currBlocksize >= size){  //check if location is free
-          *(int *)track = (size * -1)  //negative to signify allocated space 
-          *(int *)(track+size+2) = currBlocksize - size -2;
-          return (void *) (track+2);
-        }
-        if(track + *(int *)track + 2 >= track + PAGE_SIZE){
-          break;
-        }
-        
-        track += (currBlocksize +2);
-      }
-
-      //Makes here wasnt enough room on page, need to get another page.
-
-      int pagesNeeded = (size -*(int *)track) / PAGE_SIZE;
-      // No room on this page, need to find free page(s)
-      //swapPages(pagesNeeded);
-      // After swapping pages
+  int currentBlockSize, initialBlockSize;
 
    
-      *(int *)track = (size * -1)  //negative to signify allocated space 
-      *(int *)(track+size+2) = currBlocksize - size -2;
-      return (void *) (track+2); // Need to bitshift trac
-
-    }*/
+  if(size > MEMORY_SIZE-sizeof(int)){
+    printf("Size bigger then memory");
+  }
   
-  printf("Not Enough Space\n");
-  return NULL;
+  if(LibraryReq){
+    // find free reserved OS Thread location
+    return allocateThread();
+  }
+    
+  else { // Find free Page for Heaps
+    return threadAllocate();
+  }
 }
 
 int findFreeOSPage(){
-  char * ptr = (MAIN_MEMORY + PAGE_SIZE * 401);
+  char * ptr = Reserved_Page_Table;
   int i = 0;
-  for(; i < 400; i++){ // Firs 400 Page Indexs are for OS Pages
+  for(; i < 400; i++){ // First 400 Page Indexs are for OS Pages
     // Need to pages to allocated a thread
     if(*(short *)ptr > 0 && *(short *)(ptr+2) > 0){
       *(short *) ptr = (*(short *) ptr)* -1;
@@ -295,5 +242,156 @@ int findFreeOSPage(){
   }
 
 }
+
+int findFreeHeapPage(){
+  har * ptr = Heap_Page_Table;
+  int i = 0;
+  for(; i < (numPages *2)-400; i++){ // Search pages after the OS reserved Pages
+    if(*(short *)ptr > 0 && (*(short *)ptr < MAIN_MEMORY + MEMORY_SIZE){
+      *(short *) ptr = (*(short *) ptr)* -1;
+      return i;
+    }
+    ptr += 2;
+  }
+}
+
+void * libraryAllocate(int size){
+char* ptr = (MAIN_MEMORY + PAGE_SIZE); // First page after Scheduler
+      int k = 0;
+      for(; k < 200; k++){   // Sear *h through 200 thread contexts  
+        if(*(int *) ptr > 0){
+          initialBlockSize = abs(*(int *) ptr);
+          *(int *) ptr = (size * -1);
+          currentBlockSize = abs(*(int *) ptr);
+          *(int *) (ptr + sizeof(int) + currentBlockSize) = (initialBlockSize - sizeof(int) - currentBlockSize);
+           int pageNum = (ptr - MAIN_MEMORY) / PAGE_SIZE;
+           int freePageIndex =  findFreeOSPage();
+           *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) = pageNum * -1;
+           *(short *)(memManger->Reserved_Page_Table + (freePageIndex *2) + 1) = -1 * (pageNum+1);
+           return (void *) (ptr + 2); // need to bitmask ptr to shift 13 bits 
+        }
+        ptr += PAGE_SIZE;
+      }
+
+            printf("Max threads reached\n");
+            return NULL;
+}
+
+void * threadAllocate(unsigned int size){
+  int * ptr = memManger->Reserved_Page_Table ); // Point to begining of Page Table
+    
+      pthread_init_t * currentThread = getThread(); // Need to implement
+      if(currentThread->heap == NULL){
+        int freePageIndex = findFreeHeapPage();
+        if(freePageIndex < 0){
+          // need to swap
+        }
+        currentThread->heap = (memManger->Reserved_Page_Table + (freePageIndex * 2);
+      }
+      char * track = currentThread->heap;
+
+      int i = 0;
+
+      if(bitShift(*(int *) track, -16) != threadID){
+        // pageFault find where page went
+      }
+      
+      while(track < (track + PAGE_SIZE)){
+  
+        currBlocksize = bitShift(abs(*(int *)track), 8);
+ 
+        if (*(int *)track > 0 && currBlocksize >= size){  //check if location is free
+          //leading byte of Page contains threadID maybe.....
+          *(int *)track = bitShift(size, 8) + threadID  //negative to signify allocated space 
+          *(int *)(track+size+2) = bitShift((currBlocksize - size -2), 8) + threadID;
+          return (void *) bitShift((((track+2 - currentThread->heap)/PAGE_SIZE) + currentThread->heap), 16) + (track+2 -currentThread->heap);
+        }
+        if((track + currentBlocksize + 2) == (track + PAGE_SIZE){
+          break;
+        }
+        
+        track += (currBlocksize +2);
+      }
+
+      //Makes here wasnt enough room on page, need to get another page.
+
+      int pagesNeeded = (size -*(int *)track) / PAGE_SIZE;
+     // Manager will need to update table and associate with thread heap, 
+      
+      if(numFreePages() < pagesNeeded){
+        if(freePage == NULL){
+          // swap out from swapFile;
+          if(swapPage == NULL){
+            int numFreeSwaps = numFreeSwaps();
+            if(numFreeSwaps < pagesNeeded);
+            printf("All memory is full including Swap files\n");
+          }
+      }
+      else{
+        // get free pages in main memory and swap them into contigous place
+        int pageLocationNeeded = (track - currentThread->heap)
+      }
+
+      // No room on this page, need to find free page(s)
+      //swapPages(pagesNeeded);
+      // After swapping pages
+
+
+    }
+  
+  printf("Not Enough Space\n");
+  return NULL;
+
+}
+
+void swap_pages(void * page_out, void * page_in) {
+  mprotect(page_out, PAGE_SIZE, PROT_READ|PROT_WRITE);
+
+  int page_in_id = bitShift(*(int *)page_in, -8);
+  int page_out_id = bitShift(*(int *)page_out, -8);
+
+
+  memcpy(memManager->swap, page_out, PAGE_SIZE);
+  memcpy(page_out, page_in, PAGE_SIZE);
+  memcpy(page_in, MEMORY, PAGE_SIZE);
+
+  // Need to find way to update Page_Table
+
+  mprotect(page_in, PAGE_SIZE, PROT_NONE);
+}
+
+int shiftBits(int value, int shift){
+  return (shift > 0) ? (value << shift) : (value >> shift);
+}
+
+void * findFreeSwap(){
+  char * ptr = Swap_File;
+  int i = 0;
+  for(; i < Swap_Pages; i++){
+    if(*(int *) ptr > 0){
+        return ptr;
+    }
+    ptr += PAGE_SIZE;
+  }
+
+  return NULL;
+}
+
+int numFreeSwaps(){
+  char * ptr = Swap_File;
+  int i = 0;
+  int freeSwaps = 0;
+  for(; i < Swap_Pages; i++){
+    if(*(int *) ptr > 0){
+        freeSwaps++;
+    }
+    ptr += PAGE_SIZE;
+  }
+
+  return freeSwaps;
+
+}
+
+
 
 
