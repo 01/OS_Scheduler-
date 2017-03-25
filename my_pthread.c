@@ -24,6 +24,7 @@ typedef struct my_pthread_int {
     struct my_pthread_int *join;    // together with force_yield, transient
     struct my_pthread_mutex_int *lock; // together with force_yield, transient
     struct my_pthread_int *join_to; // after exit what to notify
+    long long block_until;
     ucontext_t context;
     void *(*entry_point)(void*);
     void * entry_arg;
@@ -72,7 +73,7 @@ typedef struct my_pthread_mutex_int {
 } my_pthread_mutex_int_t;
 
 #define MAX_PRIORITIES 60
-#define DEFAULT_PRIORITY 29
+#define DEFAULT_PRIORITY 30
 // by assignment we need to create 'high priority' threads
 #define CREATE_THREAD_PRIORITY 29
 #define UPDATE_DELAY_SECS  5
@@ -162,7 +163,7 @@ static void insert_at_tail(ts_linked_list_t * queue, my_pthread_int_t * tsp) {
     return;
 }
 
-static my_pthread_int_t * extract_top_thread(int minimum_priority) {
+static my_pthread_int_t * extract_top_thread_0(int minimum_priority) {
     my_pthread_int_t * rc;
     size_t i = MAX_PRIORITIES;
     for (; i > 0; --i) {
@@ -185,26 +186,43 @@ static my_pthread_int_t * extract_top_thread(int minimum_priority) {
     return NULL;
 }
 
-
-#if 0
-static my_pthread_int_t * next_thread_in_queue(const my_pthread_int_t * src) {
+static my_pthread_int_t * extract_top_thread(int minimum_priority) {
     my_pthread_int_t * rc;
     size_t i = MAX_PRIORITIES;
     for (; i > 0; --i) {
-        if (__ready_threads[i - 1].ts_head != NULL) {
-            rc = __ready_threads[i - 1].ts_head;
-            if( rc->ts_priority >= src->ts_priority) {
+        if( i < minimum_priority+1 ) {
+            break;
+        }
+        rc = __ready_threads[i - 1].ts_head;
+        for(; rc != NULL;) {
+            if( rc->block_until <= __current_clock ) {
+                rc->block_until = 0;
+                extract(&(__ready_threads[i - 1]),rc);
                 return rc;
             } else {
-                return NULL;
+                rc = rc->ts_next;
             }
         }
     }
     return NULL;
 }
-#endif
 
-void my_check() {
+static my_pthread_int_t * extract_any_thread() {
+    my_pthread_int_t * rc;
+    size_t i = MAX_PRIORITIES;
+    for (; i > 0; --i) {
+        rc = __ready_threads[i - 1].ts_head;
+        for(; rc != NULL;) {
+            extract(&(__ready_threads[i - 1]),rc);
+            return rc;
+        }
+    }
+    return NULL;
+}
+
+volatile size_t __call;
+
+void my_check(int line) {
     my_pthread_int_t * t;
     size_t i;
     // from high to low
@@ -212,7 +230,7 @@ void my_check() {
         t = __ready_threads[i-1].ts_head;
         while (t != NULL) {
            if( t == __current_thread ) {
-               printf("%s in ready state\n",t->thread_name);
+               printf("%ld: %s in ready state, line %d\n",__call,t->thread_name,line);
                assert(t != __current_thread);
            }
            t = t->ts_next;
@@ -220,17 +238,35 @@ void my_check() {
     }
 }
 
+
+
 static void printBlockedThreads() {
     my_pthread_int_t * next_thread;
     if(__blocked_threads.ts_head != NULL ) {
         next_thread = __blocked_threads.ts_head;
         while(next_thread != NULL ) {
+            assert(next_thread->ts_blocked==1);
             printf("Blocked %s p:%d\n",next_thread->thread_name,next_thread->ts_priority);
             next_thread = next_thread->ts_next;
         }
     }
 }
 
+static void printAllThreads() {
+    my_pthread_int_t * t;
+    int i;
+    printf("Current %s p:%d\n",__current_thread->thread_name,__current_thread->ts_priority);
+    printBlockedThreads();
+    for(i = MAX_PRIORITIES; i > 0; --i) {
+        t = __ready_threads[i-1].ts_head;
+        while (t != NULL) {
+            assert(t->ts_blocked==0);
+            printf("Ready %s p:%d\n",t->thread_name,t->ts_priority);
+            t = t->ts_next;
+        }
+    }
+
+}
 
 //checks starvation once per second
 // Quote (assume thread where it is 'process'):
@@ -246,8 +282,8 @@ static void ts_update() {
     my_pthread_int_t * t;
     size_t i;
     // no priority change for current thread or blocked ones 
-//printf("ts update() ===========\n");
-//printBlockedThreads();
+    //printf("ts update() ===========\n");
+    //printBlockedThreads();
 
     ++__current_thread->ts_dispwait;
     t = __blocked_threads.ts_head;
@@ -261,7 +297,7 @@ static void ts_update() {
         t = __ready_threads[i-1].ts_head;
         while (t != NULL) {
             assert(t != __current_thread);
-//printf("%s p:%d\n",t->thread_name,t->ts_priority);
+            //printf("%s p:%d\n",t->thread_name,t->ts_priority);
             if (++t->ts_dispwait >= __dispatch_control_table[i-1].ts_maxwait) {
                 t->ts_dispwait = 0;
                 int new_priority = __dispatch_control_table[i-1].ts_lwait;
@@ -442,6 +478,7 @@ by ts_lwait. The purpose of this field is to prevent starvation."
 
 
 static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
+    ++__call;
 
     clock_t clk;
     int diff;
@@ -482,7 +519,10 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
         if( current_thread->join_to != NULL ) { //to
             next_thread = current_thread->join_to; //to
             extract(&__blocked_threads,next_thread);
-            assert(next_thread->ts_blocked == 1);
+            if(next_thread->ts_blocked == 0) {
+                printf("Thread %s is not blocked\n",next_thread->thread_name);
+                assert(0);
+            }
             next_thread->ts_blocked = 0;
             // wake up values
             next_thread->ts_priority = __dispatch_control_table[next_thread->ts_priority].ts_slpret;
@@ -490,10 +530,14 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
             next_thread->ts_dispwait = 0;
 
             insert_at_head(&(__ready_threads[next_thread->ts_priority]), next_thread);
+
         }
 
         // just get next thread from ready queue
         next_thread = extract_top_thread(0);
+        if( next_thread == NULL ) {
+            next_thread = extract_any_thread();
+        }
         if( next_thread == NULL ) {
             // Something is wrong. Deadlock?
             printf("All dead. %zd threads in blocked state\n",list_size(&__blocked_threads));
@@ -501,6 +545,7 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
             assert(0);
             exit(-1);
         } 
+        assert(__current_thread != next_thread);
         __current_thread = next_thread;
         ts_setup_next_context(current_context, next_thread, NULL);
 
@@ -525,8 +570,9 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                 }
                 // inversion 
                 assert(mutex->owner != NULL);
+                assert(mutex->owner != current_thread);
                 if( current_thread->ts_priority > mutex->owner->ts_priority) {
-//printf("Inversion!\n");
+                //printf("Inversion!\n");
                     // bump it up
                     if( mutex->owner->ts_blocked ) {
                         // no need to update ready threads
@@ -544,32 +590,56 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                 }
                 current_thread->ts_mutex_next = NULL;
                 current_thread->ts_blocked = 1;
-                insert_at_tail(&__blocked_threads,current_thread);
+                //my_check(__LINE__);
+
                 next_thread = extract_top_thread(0);
+                if( next_thread == NULL ) {
+                    next_thread = extract_any_thread();
+                }
                 if( next_thread == NULL ) {
                     printf("Error: dead lock, nothing to run\n");
                     printBlockedThreads();
                     assert(0);
                     exit(-1);
                 }
+                insert_at_tail(&__blocked_threads,current_thread);
+
+            //printf("(1) Next thread  %s\n",next_thread->thread_name);
+
             } else {   
-                next_thread = extract_top_thread(0);
-                if( next_thread == NULL ) {
-                    // nothing to do, just let it go
-                    current_thread->join = NULL;
-                    current_thread->ts_timeleft = __dispatch_control_table[current_thread->ts_priority].ts_quantum;
-                    return;
-                } else {
-                    if( current_thread->join != NULL ) { //with
+                //printf("%ld: -- else 1.1\n",__call);
+                if( current_thread->join != NULL ) { //with
+                    //printf("%ld: -- else 1.2\n",__call);
+                    if( !current_thread->join->is_done ) {
+                        //printf("%ld: -- else 1.3\n",__call);
+                        current_thread->join->join_to = current_thread;
                         current_thread->ts_blocked = 1;
-                        insert_at_tail(&__blocked_threads,current_thread);
-                    } else  {
+                        next_thread = extract_top_thread(0);
+                        if( next_thread == NULL ) {
+                            next_thread = extract_any_thread();
+                        }
+                        assert(next_thread != NULL);
+                        if(next_thread != NULL) {
+                            insert_at_tail(&__blocked_threads,current_thread);
+                        }
+                    } 
+                } else  {
+                    next_thread = extract_top_thread(0);
+                    if(next_thread != NULL) {
                         // put it in front of it's priority queue or back?
                         // insert_at_head(ts_linked_list_t * queue, my_pthread_int_t * tsp)
+                        if( current_thread->ts_priority > DEFAULT_PRIORITY ) {
+                            --current_thread->ts_priority;
+                        }
                         insert_at_tail(&(__ready_threads[current_thread->ts_priority]), current_thread);
                     }
-                    current_thread->lock = NULL;
-                    current_thread->join = NULL;
+                }
+                current_thread->lock = NULL;
+                current_thread->join = NULL;
+                if( next_thread == NULL ) {
+                    // nothing to do, just let it go
+                    current_thread->ts_timeleft = __dispatch_control_table[current_thread->ts_priority].ts_quantum;
+                    return;
                 }
             }
         } else {
@@ -579,6 +649,7 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                 current_thread->ts_timeleft = __dispatch_control_table[current_thread->ts_priority].ts_quantum * 10;
                 next_thread = extract_top_thread(current_thread->ts_priority);
                 if( next_thread != NULL ) {
+                    //printf("(4) Next thread  %s\n",next_thread->thread_name);
                     current_thread->ts_dispwait = 0;     
                     insert_at_tail(&(__ready_threads[current_thread->ts_priority]), current_thread);
                 }
@@ -587,6 +658,7 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                 // check if we have high priority in a queue 
                 next_thread = extract_top_thread(current_thread->ts_priority+1);
                 if( next_thread != NULL ) {
+                    //printf("(5) Next thread  %s\n",next_thread->thread_name);
                     // current is preempted but time is not expired yet so let it be in front 
                     insert_at_head(&(__ready_threads[current_thread->ts_priority]), current_thread);
                 }
@@ -594,10 +666,17 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
         }
 
         if( next_thread != NULL ) {
-             assert(next_thread != current_thread);
+            //printf("%ld: -- else 3\n",__call);
+
+             if(next_thread == current_thread) {
+                 printf("Same thread switch %s\n",next_thread->thread_name);
+                 assert(0);
+             }
              // it must be set during insertion into a queue
              assert( next_thread->ts_timeleft > 0 );
              __current_thread = next_thread;
+            //my_check(__LINE__);
+
              //printf("## Switching from %s to %s\n",current_thread->thread_name,next_thread->thread_name);
              ts_setup_next_context(current_context, next_thread, current_thread);
         }
@@ -666,7 +745,6 @@ static void thr_func() {
     my_pthread_exit(rc);
 }
 
-
 int my_pthread_create(my_pthread_t * thread, my_pthread_attr_t * attr, void *(*function)(void*), void * arg) {
     return my_pthread_create_n(thread,attr,function,arg,"");
 }
@@ -705,8 +783,6 @@ int my_pthread_create_n(my_pthread_t * thread, my_pthread_attr_t * attr, void *(
     }
 }
 
-
-
 int my_pthread_join(my_pthread_int_t* thread, void **value_ptr){
     sigset_t current_signal;
     int join_is_done = 0;
@@ -729,8 +805,9 @@ int my_pthread_join(my_pthread_int_t* thread, void **value_ptr){
                     ublock_signals(&current_signal);
                     return -1;
                 }
+                assert( __current_thread != thread );
                 __current_thread->join = thread; //with
-                thread->join_to = (my_pthread_int_t* )__current_thread; //to
+                //thread->join_to = (my_pthread_int_t* )__current_thread; //to
             }
             __current_thread->force_yield = 1;
             __current_thread->lock = NULL;
@@ -809,14 +886,14 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
         return -1;
     }
 
-//printf("%s unlocking %p\n",__current_thread->thread_name,*mutex);
+    //printf("%s unlocking %p\n",__current_thread->thread_name,*mutex);
 
     mu = *mutex;
     block_signals(&current_signal);
     mu->locked = 0;
     mu->owner = NULL;
     if(mu->wait_queue.ts_head == NULL) {
-//printf("%s unlocked without waiting\n",__current_thread->thread_name);
+    //printf("%s unlocked without waiting\n",__current_thread->thread_name);
         ublock_signals(&current_signal);
         return 0;
     }
@@ -832,14 +909,14 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
         assert(t->ts_blocked==1);
         t->ts_blocked = 0;
 
-//printf("%s unblocked %s\n",__current_thread->thread_name,t->thread_name);
+    //printf("%s unblocked %s\n",__current_thread->thread_name,t->thread_name);
         insert_at_head(&__ready_threads[t->ts_priority], t); // insert_at_tail does not work well
         t->ts_mutex_next = NULL;
         t = tn;
     } 
     mu->wait_queue.ts_head = mu->wait_queue.ts_tail = NULL;
 
-//printf("%s unlocked %d threads\n",__current_thread->thread_name,(int)unblocked);
+    //printf("%s unlocked %d threads\n",__current_thread->thread_name,(int)unblocked);
 
     if( __current_thread->ts_priority < max_blocked_priority ) {
         __current_thread->force_yield = 1;
@@ -868,6 +945,17 @@ int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex){
     }
     free(mu);
     return 0;
+}
+
+unsigned int sleep(unsigned int seconds) {
+    sigset_t current_signal;
+    block_signals(&current_signal);
+    __current_thread->block_until =  clock() + seconds*CLOCKS_PER_SEC;
+    __current_thread->force_yield = 1;
+    __current_thread->join = NULL;
+    __current_thread->lock = NULL;
+    ublock_signals(&current_signal);
+    raise(SIGUSR1);
 }
 
 ///////////////////////////////////////////////////////
