@@ -6,6 +6,8 @@
 
 const int QUANTA_LIMIT[3];
 static int isInitialized = 0;
+static char memory[1024*1024*8];  // Static memory 8MB
+// ucontext_t size on 32 bit computer is 358 bytes, if we allow 1000 threads 358,000 bytes 
 
 static ucontext_t main;
 
@@ -205,3 +207,4 @@ void initialize_context(ucontext_t * context){
 	context->uc_stack.ss_flags = 0;
 
 }
+
