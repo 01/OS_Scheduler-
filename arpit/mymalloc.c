@@ -13,17 +13,7 @@ typedef struct {
   void * heaps;
 } MemManager;
 
-#define BYTE_TO_BINARY_PATTERN "%c%c%c%c%c%c%c%c"
-#define BYTE_TO_BINARY(byte)  \
-  (byte & 0x80 ? '1' : '0'), \
-  (byte & 0x40 ? '1' : '0'), \
-  (byte & 0x20 ? '1' : '0'), \
-  (byte & 0x10 ? '1' : '0'), \
-  (byte & 0x08 ? '1' : '0'), \
-  (byte & 0x04 ? '1' : '0'), \
-  (byte & 0x02 ? '1' : '0'), \
-  (byte & 0x01 ? '1' : '0') 
-
+// TODO: Check if we need this function actually...
 int shiftBits(int value, int shift){
   return (shift > 0) ? (value << shift) : (value >> shift);
 }
@@ -75,17 +65,19 @@ void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int c
   else if ((CallerType)callerType == THREADREQ) {
     // allocate for thread heaps
   }
+  printf("returning addr %p from LIB\n", MAIN_MEMORY);
+  return MAIN_MEMORY;
 }
 
-int main() {
-  init();
-  // *((int*)MAIN_MEMORY) = 228;
-  // printf("found a %d\n", *(int *)MAIN_MEMORY);
+// int main() {
+//   init();
+//   // *((int*)MAIN_MEMORY) = 228;
+//   // printf("found a %d\n", *(int *)MAIN_MEMORY);
 
-  // int * x = malloc(sizeof(int));
-  // printf("page size: %d\n", sysconf(_SC_PAGE_SIZE)); // PRINTS 4096 ON LOCAL ENV
-  // printf("swap page count: %d\n", SWAP_SIZE / PAGE_SIZE); // PRINTS 4080 pages
+//   // int * x = malloc(sizeof(int));
+//   // printf("page size: %d\n", sysconf(_SC_PAGE_SIZE)); // PRINTS 4096 ON LOCAL ENV
+//   // printf("swap page count: %d\n", SWAP_SIZE / PAGE_SIZE); // PRINTS 4080 pages
 
-  // printf("size of short: %d\n", sizeof(short));
-  printf("%d\n", (MEMORY_SIZE - (PAGE_SIZE*402))/PAGE_SIZE);
-}
+//   // printf("size of short: %d\n", sizeof(short));
+//   printf("%d\n", (MEMORY_SIZE - (PAGE_SIZE*402))/PAGE_SIZE);
+// }
