@@ -18,7 +18,7 @@ int shiftBits(int value, int shift){
   return (shift > 0) ? (value << shift) : (value >> shift);
 }
 
-void init() {
+void initializeMemory() {
   
   printf("Initializing memory of %ld bytes\n", MEMORY_SIZE);
   MAIN_MEMORY = (void *) memalign(PAGE_SIZE, MEMORY_SIZE);
@@ -46,16 +46,16 @@ void init() {
   }
 }
 
-void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int callerType) {
+void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int caller) {
   if (!MAIN_MEMORY) {
-    init();
+    initializeMemory();
   }
 
   // TODO: remove this logging message
-  printf("Allocating %d bytes - %s - %d - type: %d\n", size, FILENAME, LINE, callerType);
+  printf("Allocating %d bytes - %s - %d - type: %d\n", size, FILENAME, LINE, caller);
 
   if (size > MEMORY_SIZE) {
-    printf("Request exceeds overall memory space!\n");
+    ERROR_NOT_ENOUGH_SPACE
     return NULL;
   }
 
@@ -65,8 +65,15 @@ void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int c
   else if ((CallerType)callerType == THREADREQ) {
     // allocate for thread heaps
   }
+  
+  // TODO: remove this logging message
   printf("returning addr %p from LIB\n", MAIN_MEMORY);
+
   return MAIN_MEMORY;
+}
+
+void mydeallocate(void * ptr, const char* FILENAME, const int LINE, int caller) {
+  
 }
 
 // int main() {
