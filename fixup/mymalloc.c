@@ -7,6 +7,7 @@
 typedef struct {
   void * scheduler;
   void * osReserved;
+  void * threadTables;
   void * pageTable;
   void * heaps;
 } MemManager;
@@ -41,13 +42,28 @@ static void initializeMemory() {
   //   handle_error("mprotect");
   // }
 
+  // ============================================================================================
+  // |           |                  |               |   Global    |                             |
+  // | SCHEDULER |  THREAD STRUCTS  | THREAD Tables | Page Table  |          HEAP SLOTS         |
+  // |           |                  |               |             |                             |
+  // ============================================================================================
+
   memManager = MAIN_MEMORY;
   memManager->osReserved = (MAIN_MEMORY + SCHEDULER_SIZE * PAGE_SIZE);
-  memManager->pageTable = (memManager->osReserved + THREAD_RESERVED_SIZE * PAGE_SIZE);
+  memManager->threadTables = (memManager->osReserved + THREAD_TABLE_PAGES * PAGE_SIZE);
+  memManager->pageTable = (memManager->threadTables + THREAD_RESERVED_SIZE * PAGE_SIZE);
   memManager->heaps = (memManager->pageTable + GLOBAL_PT_SIZE * PAGE_SIZE);
 
-  // initialize global page table for the heaps
+  // initialize all thread tables w/ no ownership (-1)
   int i = 0;
+  short *threadSlot = (short *) memManager->threadTables;
+  for (; i < 200 * HEAP_SLOT_COUNT; i++) {
+    *threadSlot = -1;
+    threadSlot++;
+  }
+
+  // initialize global page table for the heaps
+  i = 0;
   short * ptSlot = (short *) memManager->pageTable;
   for (; i < NUM_PAGES; i++) {
     *ptSlot = i+1;

@@ -16,8 +16,12 @@
 #define MEMORY_SIZE 8 * 1024 * 1024
 #define SCHEDULER_SIZE 1
 #define THREAD_RESERVED_SIZE 400
+// store the page tables for the 200 threads here
+// this is to keep track of which pages the thread owns & what loc to load to for swap
+#define THREAD_TABLE_PAGES 1
+// global page table to keep track of where each page each
 #define GLOBAL_PT_SIZE 3
-#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (SCHEDULER_SIZE + THREAD_RESERVED_SIZE + GLOBAL_PT_SIZE))/PAGE_SIZE
+#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (SCHEDULER_SIZE + THREAD_RESERVED_SIZE + THREAD_TABLE_PAGES + GLOBAL_PT_SIZE))/PAGE_SIZE
 
 #define SWAP_SIZE 16 * 1024 * 1024
 #define UCONTEXT_SIZE sizeof(ucontext_t);
