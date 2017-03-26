@@ -15,9 +15,9 @@
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
 #define MEMORY_SIZE 8 * 1024 * 1024
 #define SCHEDULER_SIZE 1
-#define OS_RESERVED_SIZE 400
+#define THREAD_RESERVED_SIZE 400
 #define GLOBAL_PT_SIZE 3
-#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (SCHEDULER_SIZE + OS_RESERVED_SIZE + GLOBAL_PT_SIZE))/PAGE_SIZE
+#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (SCHEDULER_SIZE + THREAD_RESERVED_SIZE + GLOBAL_PT_SIZE))/PAGE_SIZE
 
 #define SWAP_SIZE 16 * 1024 * 1024
 #define UCONTEXT_SIZE sizeof(ucontext_t);
@@ -42,7 +42,7 @@ typedef enum {LIBRARYREQ, THREADREQ} CallerType;
 // 	//char swap[PAGE_SIZE];
 // } memManager;
 
-void initializeMemory();
+static void initializeMemory();
 
 void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int caller);
 
