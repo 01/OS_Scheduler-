@@ -17,32 +17,6 @@
 
 struct my_pthread_mutex_int;
 
-typedef struct my_pthread_int {
-    struct my_pthread_int *ts_next;
-    struct my_pthread_int *ts_prev;
-    struct my_pthread_int *ts_mutex_next;
-    struct my_pthread_int *join;    // together with force_yield, transient
-    struct my_pthread_mutex_int *lock; // together with force_yield, transient
-    struct my_pthread_int *join_to; // after exit what to notify
-    long long block_until;
-    ucontext_t context;
-    void *(*entry_point)(void*);
-    void * entry_arg;
-    void * return_code;
-    void * stack;
-    size_t stack_size;
-    long long start_clock;
-    int ts_timeleft; // in ms
-    int ts_dispwait;
-    char thread_name[64];
-    unsigned char ts_priority;
-    unsigned char ts_blocked;
-    unsigned char is_main;
-    unsigned char not_new;
-    unsigned char force_yield; // when 1 then 'yield' by signal 
-    volatile unsigned char is_done;
-}  my_pthread_int_t;
-
 typedef struct {
     int ts_quantum;
     int ts_tqexp;
@@ -73,14 +47,10 @@ typedef struct my_pthread_mutex_int {
 } my_pthread_mutex_int_t;
 
 #define MAX_PRIORITIES 60
-#define DEFAULT_PRIORITY 30
+#define DEFAULT_PRIORITY 29
 // by assignment we need to create 'high priority' threads
 #define CREATE_THREAD_PRIORITY 29
 #define UPDATE_DELAY_SECS  5
-
-
-// currently active thread (must not be NULL)
-static volatile my_pthread_int_t * __current_thread;
 
 // threads which are ready to go
 static ts_linked_list_t __ready_threads[MAX_PRIORITIES];
