@@ -11,5 +11,7 @@ int main(){
 	printf("Value of %p\n", test);
 	
 	printf("Value at %p is %d\n", test, *(int*)test);
+
+	void * x = malloc(9999999);
 	return 0;
 }
