@@ -7,8 +7,6 @@
 #include <string.h> // for memset
 #include <unistd.h>
 
-
-
 #include <ctype.h>
 #include <time.h>
 
@@ -26,6 +24,7 @@
 #define SWAP_SIZE 16 * 1024 * 1024
 #define UCONTEXT_SIZE sizeof(ucontext_t);
 // #define NUM_PAGES ((16 + 8) * 1024 * 1024)/PAGE_SIZE
+// FIXME: when swapfile added, add SWAP_SLOT_COUNT to NUM_PAGES
 #define NUM_PAGES HEAP_SLOT_COUNT 
 
 typedef enum {LIBRARYREQ, THREADREQ} CallerType;
@@ -36,17 +35,21 @@ typedef enum {LIBRARYREQ, THREADREQ} CallerType;
 #define ERROR_NOT_ALLOCATED printf("ERROR: Attempted to free an unallocated block. Line: %d File: %s\n", __LINE__, __FILE__);
 #define ERROR_NOT_ENOUGH_SPACE printf("ERROR: Attempting to malloc too much space. Line: %d File: %s\n", __LINE__, __FILE__);
 
-// typedef struct memManager{
-// 	void * OS_Region;
-// 	void * Reserved_Page_Table;
-// 	void * Heap_Page_Table;
-// 	void * user_heap; //needs to be initalized
-// 	void * page_table; //needs to be initialized
-// 	void * swap_file; //needs to be initialized
-// 	//char swap[PAGE_SIZE];
-// } memManager;
+typedef struct {
+  void * scheduler;
+  void * osReserved;
+  void * threadTables;
+  void * pageTable;
+  void * heaps;
+} MemManager;
 
 static void initializeMemory();
+static void * libraryAllocate(unsigned int size);
+static void * threadAllocate(unsigned int size);
+
+// Returns a short value corresponding to the slot # where the 
+// address belongs in the heap memory space
+static short getAddrSlotNum(void *addr);
 
 void * myallocate(unsigned int size, const char* FILENAME, const int LINE, int caller);
 

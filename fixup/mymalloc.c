@@ -1,27 +1,14 @@
 #include "mymalloc.h"
 #include <errno.h> // for debugging errors from mprotect
 
+// TODO: Remove this errno printout for final version?
+// WARNING: When removing this, remove usage throughout this file!!!
 #define handle_error(msg) \
            do { perror(msg); exit(EXIT_FAILURE); } while (0)
 
-typedef struct {
-  void * scheduler;
-  void * osReserved;
-  void * threadTables;
-  void * pageTable;
-  void * heaps;
-} MemManager;
-
-void * libraryAllocate(unsigned int size);
-void * threadAllocate(unsigned int size);
-
-// ======== STATIC VAR DECLARATIONS ========
+// ======== GLOBAL STATIC VAR DECLARATIONS ========
 static MemManager * memManager;
 static void * MAIN_MEMORY;
-
-// Returns a short value corresponding to the slot # where the 
-// address belongs in the heap memory space
-static short getAddrSlotNum(void *addr);
 
 // TODO: Check if we need this function actually...
 static int shiftBits(int value, int shift){
@@ -107,16 +94,3 @@ void mydeallocate(void * ptr, const char* FILENAME, const int LINE, int caller) 
 static short getAddrSlotNum(void *addr) {
   return (addr - memManager->heaps) / PAGE_SIZE;
 }
-
-// int main() {
-//   initializeMemory();
-//   // *((int*)MAIN_MEMORY) = 228;
-//   // printf("found a %d\n", *(int *)MAIN_MEMORY);
-
-//   // int * x = malloc(sizeof(int));
-//   // printf("page size: %d\n", sysconf(_SC_PAGE_SIZE)); // PRINTS 4096 ON LOCAL ENV
-//   // printf("swap page count: %d\n", SWAP_SIZE / PAGE_SIZE); // PRINTS 4080 pages
-
-//   // printf("size of short: %d\n", sizeof(short));
-//   // printf("%d\n", (MEMORY_SIZE - (PAGE_SIZE*402))/PAGE_SIZE);
-// }
