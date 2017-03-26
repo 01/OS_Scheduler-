@@ -73,7 +73,7 @@ void initializeMemory(){
   //* (memManager *) (MAIN_MEMORY + 2) = manager;
 
   //memManager * manager1 = (MAIN_MEMORY + 2);
-  manager = MAIN_MEMORY + 2;
+  manager = MAIN_MEMORY;
   manager->OS_Region = (MAIN_MEMORY + PAGE_SIZE);
   manager->Reserved_Page_Table = (MAIN_MEMORY + (401 *PAGE_SIZE));
   manager->Heap_Page_Table = manager->Reserved_Page_Table + (200 * sizeof(short));
