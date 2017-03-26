@@ -10,7 +10,21 @@
 #include <time.h>
 #include <malloc.h>
 #include <sys/mman.h>
+#include "mymalloc.h"
+#include "mymalloc2.h"
+#include <fcntl.h>
 
+#if 0
+#if defined(malloc)
+#undef malloc
+#undef free
+#endif
+#endif
+
+#undef malloc
+#undef free
+#define malloc(x) myallocate(x, __FILE__, __LINE__, LIBRARYREQ);
+#define free(x) mydeallocate(x, __FILE__, __LINE__, LIBRARYREQ);
 
 // From glib
 // mapping for general registers in ucontext
@@ -64,10 +78,13 @@ static ts_linked_list_t __finished_threads;
 // static data which controls scheduling
 static const disp_t __dispatch_control_table[];
 
+static int __file_swap_id;
+
 // To support starvation worker
 static volatile clock_t __current_clock_prev = 0;
 static volatile long long __current_clock = 0;
 static volatile long long __update_clock = 0;
+volatile my_pthread_int_t * __current_thread;
 
 static void extract(ts_linked_list_t * queue, my_pthread_int_t * tsp) {
     if (queue == NULL || tsp == NULL) {
@@ -192,24 +209,6 @@ static my_pthread_int_t * extract_any_thread() {
 
 volatile size_t __call;
 
-void my_check(int line) {
-    my_pthread_int_t * t;
-    size_t i;
-    // from high to low
-    for (i = MAX_PRIORITIES; i > 0; --i) {
-        t = __ready_threads[i-1].ts_head;
-        while (t != NULL) {
-           if( t == __current_thread ) {
-               printf("%ld: %s in ready state, line %d\n",__call,t->thread_name,line);
-               assert(t != __current_thread);
-           }
-           t = t->ts_next;
-       }
-    }
-}
-
-
-
 static void printBlockedThreads() {
     my_pthread_int_t * next_thread;
     if(__blocked_threads.ts_head != NULL ) {
@@ -289,14 +288,58 @@ static void ts_update() {
     }
 }
 
+static void * user_mem = NULL;
+
+#define INIT_SLOT_COUNT 2
+
+static mem_slot_t * __first_slot;
+static size_t __allocated_slots;
+
+static void free_slot(mem_slot_t * rc){
+    if(rc == NULL){
+        return;
+    } else {
+        rc->next = __first_slot;
+        __first_slot = rc;
+    }
+}
+
+static mem_slot_t * allocate_slot(){
+    if(__first_slot == NULL){
+        lseek(__file_swap_id, USER_POOL_SIZE*(++__allocated_slots)-1, SEEK_SET);
+        write(__file_swap_id, " ", 1);
+        mem_slot_t * rc = (mem_slot_t*)malloc(sizeof(mem_slot_t));
+        rc->offset = (__allocated_slots-1)*USER_POOL_SIZE;
+        rc->next = NULL;
+        return rc;
+    } else {
+        mem_slot_t * rc = __first_slot;
+        __first_slot = __first_slot->next;
+        return rc;
+    }
+}
+
+static void slot_init(size_t slots){
+    size_t i = 0;
+    __allocated_slots = slots;
+    for(; i < slots; ++i){
+        mem_slot_t * rc = (mem_slot_t*)malloc(sizeof(mem_slot_t));
+        rc->offset = (i)*USER_POOL_SIZE;
+        free_slot(rc);
+    }
+}
 
 static void ts_init_thread(my_pthread_int_t * t) {
+    static int counter = 0;
+    ++counter;
     memset(t, 0, sizeof(my_pthread_int_t));
     const disp_t * dt = &(__dispatch_control_table[DEFAULT_PRIORITY]);
     t->ts_timeleft = dt->ts_quantum*10;
     t->start_clock = __current_clock;
     t->ts_priority = DEFAULT_PRIORITY;
     t->ts_dispwait = 0;
+    t->mem_slot = allocate_slot();
+    //t->mem_pool_location = USER_POOL_SIZE*counter;
     getcontext(&(t->context));
 }
 
@@ -320,8 +363,12 @@ static void ts_all_done() {
 
 static void ts_make_stack(my_pthread_int_t * t) {
     t->context.uc_stack.ss_size = THREAD_STACK_SIZE;
+    #if 0
     t->context.uc_stack.ss_sp = 
             (char*)mmap(NULL, t->context.uc_stack.ss_size, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS| MAP_STACK, -1, 0);
+    #else
+    t->context.uc_stack.ss_sp = myallocate(t->context.uc_stack.ss_size, __FILE__, __LINE__, LIBRARYREQ);
+    #endif
     t->stack_size = THREAD_STACK_SIZE;
     if ((char*)MAP_FAILED == t->context.uc_stack.ss_sp) {
         perror("malloc");
@@ -329,7 +376,6 @@ static void ts_make_stack(my_pthread_int_t * t) {
     }
     t->stack = t->context.uc_stack.ss_sp;
     t->context.uc_stack.ss_size -= 256;
-
     //printf("Making stack for %s from %p to %p\n",t->thread_name,t->stack, t->stack+t->stack_size);
 }
 
@@ -387,7 +433,7 @@ static void set_timer(const clock_t ms, void(*func)(int, siginfo_t *, void *)) {
     }
 }
 
-static void block_signals(sigset_t * current) {
+void block_signals(sigset_t * current) {
     sigset_t mask;
     sigemptyset(&mask);
 
@@ -407,23 +453,16 @@ void ublock_signals(const sigset_t * current) {
 }
 
 
-void printSigset(const sigset_t *sigset)
-{
-    int sig, cnt;
-
-    cnt = 0;
-    for (sig = 1; sig < NSIG; sig++) {
-        if (sigismember(sigset, sig)) {
-            cnt++;
-            printf("%d (%s)\n", sig, strsignal(sig));
-        }
-    }
-}
-
-
 static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * next_thread, my_pthread_int_t * current_thread) {
     // it must be alive thread
     assert(next_thread->is_done == 0);
+    // msync(user_mem, USER_POOL_SIZE, MS_SYNC);
+    munmap(user_mem, USER_POOL_SIZE);
+    if(next_thread->mem_pool != NULL) {
+        // printf("Mapping thread [%s], offset %zu\n", next_thread->thread_name, next_thread->mem_slot->offset);
+        void * rc = mmap(user_mem, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, next_thread->mem_slot->offset);
+        assert( rc != MAP_FAILED );
+    }    
     if(current_thread != NULL) {
         swapcontext(&(current_thread->context),&(next_thread->context));
     } else {
@@ -431,9 +470,6 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
     }
 
 }
-
-
-
 
 /*
   Quote:
@@ -446,9 +482,16 @@ by ts_lwait. The purpose of this field is to prevent starvation."
 
 */
 
+static volatile char __global_lock = 0;
+static volatile size_t __bad_locks  = 0;
+static volatile size_t __bad_ulocks  = 0;
 
 static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
     ++__call;
+
+    if(__global_lock != 0) {
+        return;
+    }
 
     clock_t clk;
     int diff;
@@ -466,7 +509,7 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
     __current_clock = clk;
 
 
-//printf("%ld %ld %ld\n",__current_clock,__update_clock,(int64_t)CLOCKS_PER_SEC);
+    //printf("%ld %ld %ld\n",__current_clock,__update_clock,(int64_t)CLOCKS_PER_SEC);
     if(__current_clock >= __update_clock) {
         // future update clock
         __update_clock = __current_clock + UPDATE_DELAY_SECS*CLOCKS_PER_SEC;
@@ -550,17 +593,17 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                     } else {
                         extract(&(__ready_threads[mutex->owner->ts_priority]),mutex->owner);
                         mutex->owner->ts_priority = current_thread->ts_priority;
-                        insert_at_tail(&(__ready_threads[mutex->owner->ts_priority]), mutex->owner);
+                        insert_at_head(&(__ready_threads[mutex->owner->ts_priority]), mutex->owner);
                     }
                 }
                 if(mutex->wait_queue.ts_head == NULL ) {
                     mutex->wait_queue.ts_head = mutex->wait_queue.ts_tail = current_thread;
                 } else {
                     mutex->wait_queue.ts_tail->ts_mutex_next = current_thread;
+                    mutex->wait_queue.ts_tail = current_thread;
                 }
                 current_thread->ts_mutex_next = NULL;
                 current_thread->ts_blocked = 1;
-                //my_check(__LINE__);
 
                 next_thread = extract_top_thread(0);
                 if( next_thread == NULL ) {
@@ -588,7 +631,11 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
                         if( next_thread == NULL ) {
                             next_thread = extract_any_thread();
                         }
-                        assert(next_thread != NULL);
+                        if(next_thread == NULL) {
+                            printf("All dead at %d\n", __LINE__);
+                            printAllThreads();
+                            exit(0);
+                        }
                         if(next_thread != NULL) {
                             insert_at_tail(&__blocked_threads,current_thread);
                         }
@@ -645,7 +692,6 @@ static void ts_tick(int sig, siginfo_t *sip, ucontext_t * current_context) {
              // it must be set during insertion into a queue
              assert( next_thread->ts_timeleft > 0 );
              __current_thread = next_thread;
-            //my_check(__LINE__);
 
              //printf("## Switching from %s to %s\n",current_thread->thread_name,next_thread->thread_name);
              ts_setup_next_context(current_context, next_thread, current_thread);
@@ -675,6 +721,10 @@ void my_pthread_exit(void *value_ptr){
     }
 
     __current_thread->is_done = 1;
+    if(__current_thread->mem_pool != NULL){
+        munmap(__current_thread->mem_pool, USER_POOL_SIZE);
+    }
+    free_slot(__current_thread->mem_slot);
     ublock_signals(&current_signal);
     for(;;) {
         // try to send a signal to the dispather
@@ -682,14 +732,23 @@ void my_pthread_exit(void *value_ptr){
     }
 }
 
-
 // make this function execute before main
 static int ts_init(void) __attribute__((constructor));
 
 static int ts_init() {
     my_pthread_int_t * t;
-
+    printf("Initializing thread\n");
+    __file_swap_id = open("swapfile", O_RDWR | O_CREAT | O_TRUNC, 0777);
+    if(__file_swap_id < 0){
+        printf("Fatal error: File not created \n");
+        exit(1);
+    }
+    lseek(__file_swap_id, USER_POOL_SIZE*INIT_SLOT_COUNT-1, SEEK_SET);
+    write(__file_swap_id, " ", 1);
+    mymalloc_init();
+    slot_init(INIT_SLOT_COUNT);
     t = (my_pthread_int_t *)malloc(sizeof(my_pthread_int_t));
+    // t = (my_pthread_int_t *)myallocate(sizeof(my_pthread_int_t), __FILE__, __LINE__, LIBRARYREQ);
     if (t == NULL) {
         perror("Cannot initialize");
         exit(-1);
@@ -698,10 +757,16 @@ static int ts_init() {
     __update_clock = __current_clock + UPDATE_DELAY_SECS*CLOCKS_PER_SEC;
 
     ts_init_thread(t);
+    //t->mem_slot = allocate_slot();
+    printf("Thread offset for main is %zu\n", t->mem_slot->offset);
+    t->mem_pool = mmap(NULL, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
+    my_malloc2_init2(t->mem_pool, USER_POOL_SIZE);
+    //mprotect(t->mem_pool, USER_POOL_SIZE, PROT_NONE);
+    user_mem = t->mem_pool;
     t->is_main = 1;
     __current_thread = t;
     strncpy(t->thread_name,"main",sizeof(t->thread_name));
-
+    printf("Thread pool init: %s, pool address %p\n", __current_thread->thread_name, __current_thread->mem_pool);
     set_handler((void(*)(int, siginfo_t *, void *))ts_tick);
     set_timer(10, (void(*)(int, siginfo_t *, void *))ts_tick);
 
@@ -710,6 +775,9 @@ static int ts_init() {
 
 static void thr_func() {
     my_pthread_int_t * t = (my_pthread_int_t *)__current_thread;
+    printf("Thread offset of [%s] is %zu\n", t->thread_name, t->mem_slot->offset);
+    t->mem_pool = mmap(user_mem, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
+    my_malloc2_init2(t->mem_pool, USER_POOL_SIZE);
     // reset floating point and update fpstate
     void *rc = t->entry_point(t->entry_arg);
     my_pthread_exit(rc);
@@ -730,6 +798,7 @@ int my_pthread_create_n(my_pthread_t * thread, my_pthread_attr_t * attr, void *(
     my_pthread_int_t * t = *thread;
     ts_init_thread(t);
     strncpy(t->thread_name, thread_name,sizeof(t->thread_name));
+    printf("Thread pool init: %s, pool address %p\n", t->thread_name, t->mem_pool);
     ts_make_stack(t);
     t->entry_point = function;
     t->entry_arg = arg;
@@ -816,7 +885,20 @@ int my_pthread_mutex_lock(my_pthread_mutex_t *mutex){
     my_pthread_mutex_int_t * mu = *mutex;
     my_pthread_int_t * t = (my_pthread_int_t *)__current_thread;
 
+    if(__sync_lock_test_and_set(&__global_lock,1) == 0) {
+        if(__sync_lock_test_and_set(&mu->locked, 1) == 0) {
+            assert(mu->locked == 1);
+            assert( mu->owner == NULL);
+            assert( mu->wait_queue.ts_head == NULL );
+            mu->owner = t;
+            __sync_lock_release (&__global_lock);
+            return 0;
+        }
+        __sync_lock_release(&__global_lock);
+    }
+
     for(;;) {
+        ++__bad_locks;
         block_signals(&current_signal);
         if( !mu->locked  ) {
             assert( mu->owner == NULL);
@@ -849,6 +931,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
     int max_blocked_priority = 0;
     my_pthread_mutex_int_t * mu;
     my_pthread_int_t * t, *tn;
+    int counter = 0;
 
 
     if(mutex == NULL){
@@ -856,14 +939,41 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
         return -1;
     }
 
+    mu = *mutex;
+//printf("%s Un-locking %p\n",__current_thread->thread_name,*mutex);
+
+
+    if(__sync_lock_test_and_set(&__global_lock,1) == 0) {
+        if( mu->wait_queue.ts_head == NULL ) {
+            mu->locked = 0 ;
+            mu->owner = NULL;
+            __sync_lock_release(&__global_lock);
+            return;
+        }
+        __sync_lock_release(&__global_lock);
+    }
+
+
+    // __global_lock = 1;
+    // mu->owner = NULL;
+    // __sync_lock_release(&mu->locked);
+    // if(mu->wait_queue.ts_head == NULL) {
+    //     __global_lock = 0;
+    //     return;
+    // }
+    // __global_lock = 0;
+
     //printf("%s unlocking %p\n",__current_thread->thread_name,*mutex);
 
-    mu = *mutex;
+    ++__bad_ulocks;
+
     block_signals(&current_signal);
+    assert(mu->locked == 1);
     mu->locked = 0;
     mu->owner = NULL;
+
     if(mu->wait_queue.ts_head == NULL) {
-    //printf("%s unlocked without waiting\n",__current_thread->thread_name);
+        // someone did clean already
         ublock_signals(&current_signal);
         return 0;
     }
@@ -871,6 +981,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
     // unblock all waiting threads
     t = mu->wait_queue.ts_head;
     for(;t != NULL;) {
+        ++counter;
         tn = t->ts_mutex_next;
         if( max_blocked_priority < t->ts_priority ) {
             max_blocked_priority = t->ts_priority;
@@ -884,6 +995,7 @@ int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex){
         t->ts_mutex_next = NULL;
         t = tn;
     } 
+    //printf("Unlocked %d threads\n", counter);
     mu->wait_queue.ts_head = mu->wait_queue.ts_tail = NULL;
 
     //printf("%s unlocked %d threads\n",__current_thread->thread_name,(int)unblocked);
