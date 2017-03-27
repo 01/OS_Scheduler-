@@ -1,7 +1,9 @@
 #pragma once
 
 #include <ucontext.h>
+#if defined(USE_MY_MALLOC)
 #include "mymalloc.h"
+#endif
 
 #if !defined(my_pthread_create) //for system override
 
@@ -11,10 +13,13 @@ typedef void *  my_pthread_attr_t;
 typedef struct my_pthread_mutex_int * my_pthread_mutex_t;
 typedef void * my_pthread_mutexattr_t;
 
+#if defined(USE_MY_MALLOC)
+
 typedef struct _mem_slot{
     size_t offset;
     struct _mem_slot * next;
 } mem_slot_t;
+#endif
 
 typedef struct my_pthread_int {
     struct my_pthread_int *ts_next;
@@ -29,9 +34,11 @@ typedef struct my_pthread_int {
     void * entry_arg;
     void * return_code;
     void * stack; //consider deleting this one
+#if defined(USE_MY_MALLOC)
     void * mem_pool; //for malloc
     size_t mem_pool_size;
     mem_slot_t * mem_slot;
+#endif    
     size_t stack_size;
     long long start_clock;
     int ts_timeleft; // in ms

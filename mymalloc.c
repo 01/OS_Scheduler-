@@ -1,3 +1,4 @@
+#if defined(USE_MY_MALLOC)
 #include "mymalloc.h"
 #include "mymalloc2.h"
 #include "my_pthread_t.h"
@@ -82,4 +83,4 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
     ublock_signals(&current);
   }
 }
-
+#endif

@@ -10,8 +10,10 @@
 #include <time.h>
 #include <malloc.h>
 #include <sys/mman.h>
+#if defined(USE_MY_MALLOC)
 #include "mymalloc.h"
 #include "mymalloc2.h"
+#endif
 #include <fcntl.h>
 
 #if 0
@@ -21,10 +23,12 @@
 #endif
 #endif
 
+#if defined(USE_MY_MALLOC)
 #undef malloc
 #undef free
 #define malloc(x) myallocate(x, __FILE__, __LINE__, LIBRARYREQ);
 #define free(x) mydeallocate(x, __FILE__, __LINE__, LIBRARYREQ);
+#endif
 
 // From glib
 // mapping for general registers in ucontext
@@ -78,7 +82,9 @@ static ts_linked_list_t __finished_threads;
 // static data which controls scheduling
 static const disp_t __dispatch_control_table[];
 
+#if defined(USE_MY_MALLOC)
 static int __file_swap_id;
+#endif
 
 // To support starvation worker
 static volatile clock_t __current_clock_prev = 0;
@@ -288,6 +294,10 @@ static void ts_update() {
     }
 }
 
+#ifndef SYMBOL
+#define SYMBOL value
+#endif
+#if defined(USE_MY_MALLOC)
 static void * user_mem = NULL;
 
 #define INIT_SLOT_COUNT 2
@@ -328,17 +338,22 @@ static void slot_init(size_t slots){
         free_slot(rc);
     }
 }
+#endif
 
 static void ts_init_thread(my_pthread_int_t * t) {
+    #if defined(USE_MY_MALLOC)
     static int counter = 0;
     ++counter;
     memset(t, 0, sizeof(my_pthread_int_t));
+    #endif
     const disp_t * dt = &(__dispatch_control_table[DEFAULT_PRIORITY]);
     t->ts_timeleft = dt->ts_quantum*10;
     t->start_clock = __current_clock;
     t->ts_priority = DEFAULT_PRIORITY;
     t->ts_dispwait = 0;
+    #if defined(USE_MY_MALLOC)
     t->mem_slot = allocate_slot();
+    #endif
     //t->mem_pool_location = USER_POOL_SIZE*counter;
     getcontext(&(t->context));
 }
@@ -363,11 +378,11 @@ static void ts_all_done() {
 
 static void ts_make_stack(my_pthread_int_t * t) {
     t->context.uc_stack.ss_size = THREAD_STACK_SIZE;
-    #if 0
+    #if defined(USE_MY_MALLOC)
+    t->context.uc_stack.ss_sp = myallocate(t->context.uc_stack.ss_size, __FILE__, __LINE__, LIBRARYREQ);
+    #else
     t->context.uc_stack.ss_sp = 
             (char*)mmap(NULL, t->context.uc_stack.ss_size, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS| MAP_STACK, -1, 0);
-    #else
-    t->context.uc_stack.ss_sp = myallocate(t->context.uc_stack.ss_size, __FILE__, __LINE__, LIBRARYREQ);
     #endif
     t->stack_size = THREAD_STACK_SIZE;
     if ((char*)MAP_FAILED == t->context.uc_stack.ss_sp) {
@@ -457,12 +472,14 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
     // it must be alive thread
     assert(next_thread->is_done == 0);
     // msync(user_mem, USER_POOL_SIZE, MS_SYNC);
+    #if defined(USE_MY_MALLOC)
     munmap(user_mem, USER_POOL_SIZE);
     if(next_thread->mem_pool != NULL) {
         // printf("Mapping thread [%s], offset %zu\n", next_thread->thread_name, next_thread->mem_slot->offset);
         void * rc = mmap(user_mem, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, next_thread->mem_slot->offset);
         assert( rc != MAP_FAILED );
     }    
+    #endif
     if(current_thread != NULL) {
         swapcontext(&(current_thread->context),&(next_thread->context));
     } else {
@@ -721,10 +738,12 @@ void my_pthread_exit(void *value_ptr){
     }
 
     __current_thread->is_done = 1;
+    #if defined(USE_MY_MALLOC)
     if(__current_thread->mem_pool != NULL){
         munmap(__current_thread->mem_pool, USER_POOL_SIZE);
     }
     free_slot(__current_thread->mem_slot);
+    #endif
     ublock_signals(&current_signal);
     for(;;) {
         // try to send a signal to the dispather
@@ -738,6 +757,7 @@ static int ts_init(void) __attribute__((constructor));
 static int ts_init() {
     my_pthread_int_t * t;
     printf("Initializing thread\n");
+    #if defined(USE_MY_MALLOC)
     __file_swap_id = open("swapfile", O_RDWR | O_CREAT | O_TRUNC, 0777);
     if(__file_swap_id < 0){
         printf("Fatal error: File not created \n");
@@ -747,6 +767,7 @@ static int ts_init() {
     write(__file_swap_id, " ", 1);
     mymalloc_init();
     slot_init(INIT_SLOT_COUNT);
+    #endif
     t = (my_pthread_int_t *)malloc(sizeof(my_pthread_int_t));
     // t = (my_pthread_int_t *)myallocate(sizeof(my_pthread_int_t), __FILE__, __LINE__, LIBRARYREQ);
     if (t == NULL) {
@@ -755,18 +776,21 @@ static int ts_init() {
     }
     __current_clock = (__current_clock_prev = clock());
     __update_clock = __current_clock + UPDATE_DELAY_SECS*CLOCKS_PER_SEC;
-
     ts_init_thread(t);
     //t->mem_slot = allocate_slot();
+#if defined(USE_MY_MALLOC)
     printf("Thread offset for main is %zu\n", t->mem_slot->offset);
     t->mem_pool = mmap(NULL, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
     my_malloc2_init2(t->mem_pool, USER_POOL_SIZE);
     //mprotect(t->mem_pool, USER_POOL_SIZE, PROT_NONE);
     user_mem = t->mem_pool;
+#endif    
     t->is_main = 1;
     __current_thread = t;
     strncpy(t->thread_name,"main",sizeof(t->thread_name));
+    #if defined(USE_MY_MALLOC)
     printf("Thread pool init: %s, pool address %p\n", __current_thread->thread_name, __current_thread->mem_pool);
+    #endif
     set_handler((void(*)(int, siginfo_t *, void *))ts_tick);
     set_timer(10, (void(*)(int, siginfo_t *, void *))ts_tick);
 
@@ -775,9 +799,11 @@ static int ts_init() {
 
 static void thr_func() {
     my_pthread_int_t * t = (my_pthread_int_t *)__current_thread;
+    #if defined(USE_MY_MALLOC)
     printf("Thread offset of [%s] is %zu\n", t->thread_name, t->mem_slot->offset);
     t->mem_pool = mmap(user_mem, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
     my_malloc2_init2(t->mem_pool, USER_POOL_SIZE);
+    #endif
     // reset floating point and update fpstate
     void *rc = t->entry_point(t->entry_arg);
     my_pthread_exit(rc);
@@ -797,8 +823,10 @@ int my_pthread_create_n(my_pthread_t * thread, my_pthread_attr_t * attr, void *(
 
     my_pthread_int_t * t = *thread;
     ts_init_thread(t);
+    #if defined(USE_MY_MALLOC)
     strncpy(t->thread_name, thread_name,sizeof(t->thread_name));
     printf("Thread pool init: %s, pool address %p\n", t->thread_name, t->mem_pool);
+    #endif
     ts_make_stack(t);
     t->entry_point = function;
     t->entry_arg = arg;

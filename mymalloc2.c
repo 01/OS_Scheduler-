@@ -1,3 +1,4 @@
+#if defined(USE_MY_MALLOC)
 #include <stdlib.h>
 #include <stdio.h>
 #include <sys/mman.h>
@@ -123,3 +124,4 @@ void myfree2(void * mem_pool, void *address, const char * file, int line){
     p->succ = p->succ->succ;
   }
 }
+#endif
