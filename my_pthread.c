@@ -10,10 +10,11 @@
 #include <time.h>
 #include <malloc.h>
 #include <sys/mman.h>
+
 #if defined(USE_MY_MALLOC)
 #include "mymalloc.h"
-#include "mymalloc2.h"
 #endif
+
 #include <fcntl.h>
 
 #if 0
@@ -493,8 +494,8 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
 "A per process counter, ts_dispwait, is initialized to zero each time a process
 is placed back on the dispatcher queue after its time quantum has expired or when it is
 awakened (ts_dispwait is not reset to zero when a process is preempted by a higher priority
-process). This counter is incremented once per second. If a process’s ts_dispwait value
-exceeds the ts_maxwait value for its level, the process’s priority is changed to that indicated
+process). This counter is incremented once per second. If a processï¿½s ts_dispwait value
+exceeds the ts_maxwait value for its level, the processï¿½s priority is changed to that indicated
 by ts_lwait. The purpose of this field is to prevent starvation."
 
 */

@@ -1,15 +1,19 @@
 #if defined(USE_MY_MALLOC)
 #include "mymalloc.h"
-#include "mymalloc2.h"
 #include "my_pthread_t.h"
-#include <errno.h> // for debugging errors from mprotect
-#include <signal.h>
-#include <sys/mman.h>
 
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
 
 //#define SWAP_SIZE 16 * 1024 * 1024
 #define ALIGN_PAGE_SIZE(a) (void*)(((size_t)(a)+(pagesize-1))&~(pagesize-1))
+
+#define ANSI_COLOR_RED     "\x1b[31m"
+#define ANSI_COLOR_RESET   "\x1b[0m"
+
+static const size_t FREE_SIG = 0xAAAAAAAA;
+static const size_t USED_SIG = 0xAAAAAAAB;
+#define ALIGN8(a) (((a)+7)&~7)
+
 
 static void * system_pool;
 //static void * user_pool;
@@ -47,6 +51,22 @@ static void ts_mem_handler(int sig, siginfo_t *sip, ucontext_t * current_context
   }
 }
 
+static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void * addr){
+  struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection /*PROT_WRITE | PROT_READ | PROT_EXEC*/, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  *mem_pool = root;
+  root->prev = root->succ = NULL;
+  root->size = size - ALIGN8(sizeof(MemEntry));
+  root->recognize = FREE_SIG;
+}
+
+void my_malloc2_init2(void * mem_pool, size_t size){
+  struct MemEntry * root = (struct MemEntry*)mem_pool;
+  root->prev = root->succ = NULL;
+  root->size = size - ALIGN8(sizeof(MemEntry));
+  root->recognize = FREE_SIG;
+}
+
+
 void mymalloc_init() {
   printf("Initializing mymalloc\n");
   pagesize = PAGE_SIZE;
@@ -81,6 +101,99 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
     myfree2(__current_thread->mem_pool, ptr, FILENAME, LINE);
 
     ublock_signals(&current);
+  }
+}
+
+/*
+  Algorithm:
+  traverse from left to right in mem_space and find MemEntry which is marked as free
+  check size of this memEntry
+  if memEntry.size < size:
+    keep traversing
+  else
+    allocate (mark this memEntry as allocated)
+      check memEntry.size
+      if memEntry.size > size && memEntry.size - size > offsetValue:
+        create a new MemEntry following end of newly allocated block
+    return address to beginning of data block following this memEntry
+*/
+void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
+  struct MemEntry * root = (struct MemEntry*)mem_pool;
+  struct MemEntry * p, *succ; //todo: change name of succ
+
+  // *** algorithm for allocated chunks of memory ***
+  p = root;
+  size = ALIGN8(size);
+  do{
+    if(p->size < size) p = p->succ; // p is not big enough for allocation
+    else if(p->recognize != FREE_SIG) p = p->succ; // p is not free to be allocated
+    else if(p->size >= size) // found a chunk large enough
+    {
+      p->recognize = USED_SIG;
+      // break off current data-block & make another MemEntry struct
+      if(p->size > (size + ALIGN8(sizeof(MemEntry)))){
+        succ = (MemEntry*)((size_t)p + ALIGN8(sizeof(MemEntry)) + size);
+        succ->prev = p;
+        succ->succ = p->succ;
+        succ->size = p->size - ALIGN8(sizeof(MemEntry)) - size;
+        succ->recognize = FREE_SIG;
+        p->size = size;
+        p->succ = succ;
+      }
+      return (void*)((size_t)p + ALIGN8(sizeof(MemEntry)));
+    }
+  } while(p);
+  //we ran out of space
+  printf(ANSI_COLOR_RED "malloc() called failed from %s, line %d\n\tError: Not enough contiguous memory. Try freeing first.\n" ANSI_COLOR_RESET, file, line);
+  return NULL;
+}
+
+/*
+  Algorithm:
+    Check if address is in the mem_space array
+      if yes:
+        check if address points to the beginning of a data-block (end of a MemEntry).
+        To do this: check if the value before it matches the recognize pattern
+          size_t recognize == SIGNATURE
+          if this matches: go to beginning of MemEntry & mark the block as free
+            isFree = 1
+          check if successor pointer is to a free MemEntry
+            if yes:
+              merge the MemEntrys (size of current MemEntry = MemEntry.size + ALIGN8(sizeof(MemEntry)) + MemEntry.succ.size)
+              set succ pointer to the successor of the second MemEntry and then check the successor of that MemEntry
+          Keep repeating until you encounter a MemEntry that is NOT free (isFree = 0)
+
+          check if prev pointer is to a free MemEntry
+            if yes:
+              merge current MemEntry with prev MemEntry
+              set the succ pointer of prev MemEntry to the succ of current MemEntry
+              set current MemEntry to be the old prev MemEntry
+            keep repeating until you encounter a MemEntry that is NOT free (isFree = 0)
+*/
+void myfree2(void * mem_pool, void *address, const char * file, int line){
+  struct MemEntry *p;
+  struct MemEntry * root = (struct MemEntry*)mem_pool;
+
+  if(*(size_t*)(address - sizeof(size_t)) == USED_SIG){
+    p = (MemEntry*)((size_t)address - ALIGN8(sizeof(MemEntry)));
+  }
+  else{
+    printf(ANSI_COLOR_RED "free() call failed from %s, line %d\n\tError: Attempted to free nonexistent/already-freed memory.\n" ANSI_COLOR_RESET, file, line);
+    return; //address not in memory
+  }
+  
+  p->recognize = FREE_SIG;
+  
+  //merge free data blocks into one free data block
+  while(p->prev != NULL && p->prev->recognize == FREE_SIG){
+    p = p->prev;
+  }
+  
+  //keep finding prev pointer until no longer free, now merge all free blocks before and after
+  while(p->succ != NULL && p->succ->recognize == FREE_SIG){ //merge with additional block
+    p->size += p->succ->size + ALIGN8(sizeof(MemEntry));
+    p->succ->recognize = 0; //to avoid getting picked up by future addresses
+    p->succ = p->succ->succ;
   }
 }
 #endif
