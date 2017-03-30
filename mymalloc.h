@@ -18,6 +18,24 @@
 #define free(x) mydeallocate(x, __FILE__, __LINE__, THREADREQ);
 #define USER_POOL_SIZE (1024*1024*7)
 #define SYSTEM_POOL_SIZE (1024*1024)
+
+#define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+#define MEMORY_SIZE 8 * 1024 * 1024
+#define SCHEDULER_SIZE 1
+#define THREAD_RESERVED_SIZE 400
+// store the page tables for the 200 threads here
+// this is to keep track of which pages the thread owns & what loc to load to for swap
+#define THREAD_TABLE_PAGES 1
+// global page table to keep track of where each page each
+#define GLOBAL_PT_SIZE 3
+#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (SCHEDULER_SIZE + THREAD_RESERVED_SIZE + THREAD_TABLE_PAGES + GLOBAL_PT_SIZE))/PAGE_SIZE
+
+#define SWAP_SIZE 16 * 1024 * 1024
+#define UCONTEXT_SIZE sizeof(ucontext_t);
+// #define NUM_PAGES ((16 + 8) * 1024 * 1024)/PAGE_SIZE
+// FIXME: when swapfile added, add SWAP_SLOT_COUNT to NUM_PAGES
+#define NUM_PAGES HEAP_SLOT_COUNT 
+
 #define ERROR_NOT_ALLOCATED printf("ERROR: Attempted to free an unallocated block. Line: %d File: %s\n", __LINE__, __FILE__);
 #define ERROR_NOT_ENOUGH_SPACE printf("ERROR: Attempting to malloc too much space. Line: %d File: %s\n", __LINE__, __FILE__);
 
@@ -54,7 +72,7 @@ struct MemEntry{
 static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void * addr);
 void my_malloc2_init2(void * mem_pool, size_t size);
 
-void mymalloc_init();
+void * mymalloc_init();
 
 void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller);
 

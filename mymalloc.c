@@ -16,7 +16,7 @@ static const size_t USED_SIG = 0xAAAAAAAB;
 
 
 static void * system_pool;
-//static void * user_pool;
+static void * user_pool; //temporary
 
 static size_t pagesize;
 
@@ -52,7 +52,7 @@ static void ts_mem_handler(int sig, siginfo_t *sip, ucontext_t * current_context
 }
 
 static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void * addr){
-  struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection /*PROT_WRITE | PROT_READ | PROT_EXEC*/, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   *mem_pool = root;
   root->prev = root->succ = NULL;
   root->size = size - ALIGN8(sizeof(MemEntry));
@@ -67,19 +67,21 @@ void my_malloc2_init2(void * mem_pool, size_t size){
 }
 
 
-void mymalloc_init() {
+void * mymalloc_init() {
   printf("Initializing mymalloc\n");
   pagesize = PAGE_SIZE;
   set_mem_handler((void(*)(int, siginfo_t *, void *))ts_mem_handler);
-  my_malloc2_init(&system_pool, SYSTEM_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, NULL);
+  my_malloc2_init(&system_pool, MEMORY_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, NULL);
   //my_malloc2_init(&user_pool, USER_POOL_SIZE, PROT_NONE);
   //printf("User pool at %p - %p\n", user_pool, (char*)user_pool + USER_POOL_SIZE);
   printf("System pool at %p - %p\n", system_pool, (char*)system_pool + SYSTEM_POOL_SIZE);
+  printf("User pool at %p - %p\n", (char*)system_pool + SYSTEM_POOL_SIZE, (char*)system_pool + MEMORY_SIZE);
+  return system_pool;
 }
 
 void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller) {
   sigset_t current;
-  if(caller == LIBRARYREQ || __current_thread->is_main){
+  if(caller == LIBRARYREQ){
     return mymalloc2(system_pool, size, FILENAME, LINE);
   } else {
     void * rc;
@@ -119,7 +121,7 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
 */
 void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
   struct MemEntry * root = (struct MemEntry*)mem_pool;
-  struct MemEntry * p, *succ; //todo: change name of succ
+  struct MemEntry * p, *succ;
 
   // *** algorithm for allocated chunks of memory ***
   p = root;
