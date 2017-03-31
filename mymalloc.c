@@ -80,6 +80,14 @@ void my_malloc2_init2(void * mem_pool, size_t size){
   *(int *)root = size - sizeof(int));
 }
 
+short getPageForVirtualSlot(short slot) {
+  return *(short *)((char *)threadPageTables * 200 * __current_thread->threadID + sizeof(short)*slot);
+}
+
+short getCurrentSlotForPage(short pageNum) {
+  return *(short *)((char *)globalPageTables + sizeof(short) * pageNum);
+}
+
 void * mymalloc_init() {
   printf("Initializing mymalloc\n");
   pagesize = PAGE_SIZE;
