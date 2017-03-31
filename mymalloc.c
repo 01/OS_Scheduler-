@@ -7,7 +7,7 @@
 
 // #define OS_RESERVED_PAGES 4
 #define THREAD_RESERVED_PAGES 400
-#define THREAD_PT_PAGES 1
+#define THREAD_PT_PAGES 200
 #define GLOBAL_PT_PAGES 3
 // TODO: Include "OS_RESERVED_PAGES + " in the formula ...PAGE_SIZE * (...) if you uncomment OS_RESERVED_PAGES
 #define SWAP_SIZE 16 * 1024 * 1024
