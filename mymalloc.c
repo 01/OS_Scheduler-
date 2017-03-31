@@ -83,10 +83,9 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
 
 // Used to initialize memory for USER_POOL
 void my_malloc2_init2(void * mem_pool, size_t size){
-  char * root = (char *)struct MemEntry*)mem_pool;
-  root->prev = root->succ = NULL;
-  root->size = size - ALIGN8(sizeof(MemEntry));
-  root->recognize = FREE_SIG;
+  char * root = (char *)mem_pool;
+
+  *(int *)root = size - sizeof(int));
 }
 
 void * mymalloc_init() {
@@ -110,7 +109,7 @@ void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller)
     void * rc;
     block_signals(&current);
     printf("Thread alloc: %s, pool address %p\n", __current_thread->thread_name, __current_thread->mem_pool);
-    rc = mymalloc2(__current_thread->mem_pool, size, FILENAME, LINE);
+    rc = mymalloc2(__current_thread->mem_pool_front, _current_thread->mem_pool_end, size, FILENAME, LINE);
     ublock_signals(&current);
     return rc;
   }
@@ -123,7 +122,7 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
     return myfree2(system_pool, ptr, FILENAME, LINE);
   } else {
     block_signals(&current);
-    myfree2(__current_thread->mem_pool, ptr, FILENAME, LINE);
+    myfree2(__current_thread->mem_pool_front, __current_thread->mem_pool_end,ptr, FILENAME, LINE);
 
     ublock_signals(&current);
   }
