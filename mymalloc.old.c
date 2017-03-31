@@ -18,12 +18,12 @@ int arrayInitialized=0;
  *
  *  2000 indexable pages requires 11 bits (will need to use 2 bytes)
  *
-/* Physical Memory Diagram ************************************
- *----------------------------------------------------------  *
- *- ucontext's   -  Page Table      -    Physical Memory   -  *                                     -
- *- 348000Bytes  -   4000 bytes     -     8,036,608 bytes  -  *
- *----------------------------------------------------------  *
- **************************************************************
+/* Physical Memory Diagram **********************************************************************
+ *-----------------------------------------------    Page Table       -   
+ *- Shcheduler/MemMang -  200 threads * 3 pages - 2 bytes * 6000 pages-  Physical Memory   -     *                                     -
+ *-  -   3 Pages       -                        -     3 pages         -
+ *----------------------------------------------------------          -       1490 Pages
+ ************************************************************************************************
  *
  * VM Address Diagram*******************************************
  * ----------------------------------------------------------- *
@@ -41,7 +41,7 @@ int arrayInitialized=0;
 // TODO: Make sure this is memaligned!!
 static char * MAIN_MEMORY;
 static numThreads = 0;
-
+static numPages = 1406;
 memManager * manager;
 
 
@@ -61,13 +61,13 @@ void initializeMemory(){
   printf("Did we make it here?\n");
   int i = 0;
   // insert metadata at begining of each page block
-  /*
+  
   int i = 0;
   for(; i < numPages; i++){
     // sizeof(meta data) == sizeof(int)
     *(int *) ptr = (PAGE_SIZE - sizeof(int));
     ptr += PAGE_SIZE;
-  }*/
+  }
   // Save ptr to each key memory area in main memory
   // TODO:  Create definition for memManager struct
   //memManager manager;
@@ -75,9 +75,9 @@ void initializeMemory(){
 
   //memManager * manager1 = (MAIN_MEMORY + 2);
   manager = MAIN_MEMORY;
-  manager->OS_Region = (MAIN_MEMORY + PAGE_SIZE);
-  manager->Reserved_Page_Table = (MAIN_MEMORY + (401 *PAGE_SIZE));
-  manager->Heap_Page_Table = manager->Reserved_Page_Table + (200 * sizeof(short));
+  manager->OS_Region = (MAIN_MEMORY + (PAGE_SIZE *3));
+  manager->Reserved_Page_Table = (MAIN_MEMORY + (603 *PAGE_SIZE));
+  manager->Heap_Page_Table = manager->Reserved_Page_Table +  (3 * PAGE_SIZE);
   if(test){
     i = 0;
     ptr = MAIN_MEMORY;
@@ -88,10 +88,6 @@ void initializeMemory(){
     }
   }
 
-  // Scheduler gets one page
-  // *(scheduler *) MEMORY[0]= main;
-
-  // Initialize reserved OS for 200 Threads 2 Pages per 400 pages
 
   // Initialize Page Table, index ~6139 Pages (1775 main memory 4096 Swap), 2 Bytes each for Frame offset 12278 bytes
   // First 401 Pages Reserved
@@ -99,7 +95,7 @@ void initializeMemory(){
   short * ptr1 = manager->Reserved_Page_Table; // Start of page table
   for(; k < numPages; k++){
     // TODO: is this bitShift(...) an actual function?
-    *ptr1 = bitShift(k, 8);
+    *ptr1 = k;
     ptr1++;
   }
 
@@ -212,16 +208,17 @@ void mydeallocate(void * ptrFree, const char* FILENAME, const int LINE, int call
 
 int findFreeOSPage(){
   // TODO: Revise to actually retrieve the Reserved_Page_Table ptr value
-  char * ptr = manager->Reserved_Page_Table;
+  char * ptr = manager->OS_Region;
   int i = 0;
-  for(; i < 400; i++){ // First 400 Page Indexs are for OS Pages
+  for(; i < 200; i++){ // First 400 Page Indexs are for OS Pages
     // Need to pages to allocated a thread
-    if(*(short *)ptr > 0 && *(short *)(ptr+2) > 0){
-      *(short *) ptr = (*(short *) ptr)* -1;
-      *(short *) ptr = (*(short *)ptr +2) * -1;
+    if(*(int *)ptr > 0){
+      *(int *) ptr = (PAGE_SIZE * 3 * -1);
+      *(int *) (ptr + PAGE_SIZE) = 0;
+      *(int *)(ptr + 2 * PAGE_SIZE) = 0;
       return i;
     }
-    ptr += 2;
+    ptr += (PAGE_SIZE * 3);
   }
 
 }
