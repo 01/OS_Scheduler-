@@ -71,7 +71,7 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
   struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   *mem_pool = root;
   root->prev = root->succ = NULL;
-  root->size = size - ALIGN8(THREAD_RESERVED_SPACE * PAGE_SIZE + MAX_THREADS * sizeof(MemEntry));
+  root->size = size - ALIGN8(THREAD_RESERVED_PAGES * PAGE_SIZE + MAX_THREADS * sizeof(MemEntry));
   root->recognize = FREE_SIG;
 
   // initialize ptrs to key regions in 8MB space
@@ -102,7 +102,7 @@ void * mymalloc_init() {
 
 void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller) {
   sigset_t current;
-  if(caller == LIBRARYREQ){
+  if(caller == LIBRARYREQ || __current_thread->is_main){
     return mymalloc2(system_pool, size, FILENAME, LINE);
   } else {
     void * rc;
