@@ -75,10 +75,9 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
 
 // Used to initialize memory for USER_POOL
 void my_malloc2_init2(void * mem_pool, size_t size){
-  char * root = (char *)struct MemEntry*)mem_pool;
-  root->prev = root->succ = NULL;
-  root->size = size - ALIGN8(sizeof(MemEntry));
-  root->recognize = FREE_SIG;
+  char * root = (char *)mem_pool;
+
+  *(int *)root = size - sizeof(int));
 }
 
 void * mymalloc_init() {
@@ -102,7 +101,7 @@ void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller)
     void * rc;
     block_signals(&current);
     printf("Thread alloc: %s, pool address %p\n", __current_thread->thread_name, __current_thread->mem_pool);
-    rc = mymalloc2(__current_thread->mem_pool, size, FILENAME, LINE);
+    rc = mymalloc2(__current_thread->mem_pool_front, _current_thread->mem_pool_end, size, FILENAME, LINE);
     ublock_signals(&current);
     return rc;
   }
@@ -115,7 +114,7 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
     return myfree2(system_pool, ptr, FILENAME, LINE);
   } else {
     block_signals(&current);
-    myfree2(__current_thread->mem_pool, ptr, FILENAME, LINE);
+    myfree2(__current_thread->mem_pool_front, __current_thread->mem_pool_end,ptr, FILENAME, LINE);
 
     ublock_signals(&current);
   }
@@ -134,7 +133,7 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
         create a new MemEntry following end of newly allocated block
     return address to beginning of data block following this memEntry
 */
-void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
+void *mymalloc2(void * mempool_front, void * mempool_end,size_t size, const char * file, int line){
   char * root = (char *)mem_pool;
   char * p, *succ;
 
@@ -183,7 +182,7 @@ void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
               set current MemEntry to be the old prev MemEntry
             keep repeating until you encounter a MemEntry that is NOT free (isFree = 0)
 */
-void myfree2(void * mem_pool, void *address, const char * file, int line){
+void myfree2(void * mem_pool_front, void * mempool_end, void *address, const char * file, int line){
   char *p;
   char * root = (char *)mem_pool;
   p = root;
