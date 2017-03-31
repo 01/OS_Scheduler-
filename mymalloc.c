@@ -142,7 +142,7 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
         create a new MemEntry following end of newly allocated block
     return address to beginning of data block following this memEntry
 */
-void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
+void *mymalloc2(void * mempool_front, void * mempool_end,size_t size, const char * file, int line){
   char * root = (char *)mem_pool;
   char * p, *succ;
 
@@ -191,7 +191,7 @@ void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
               set current MemEntry to be the old prev MemEntry
             keep repeating until you encounter a MemEntry that is NOT free (isFree = 0)
 */
-void myfree2(void * mem_pool, void *address, const char * file, int line){
+void myfree2(void * mem_pool_front, void * mempool_end, void *address, const char * file, int line){
   char *p;
   char * root = (char *)mem_pool;
   p = root;
