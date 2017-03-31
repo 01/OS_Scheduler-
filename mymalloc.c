@@ -68,7 +68,7 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
 
   // initialize ptrs to key regions in 8MB space
   threadReservedSpace = (char *)(root + PAGE_SIZE * 3) ;
-  threadPageTables = (char *)((root) + PAGE_SIZE * THREAD_RESERVED_PAGES_;
+  threadPageTables = (char *)(root) + PAGE_SIZE * THREAD_RESERVED_PAGES_;
   globalPageTables = (char *)(threadPageTables) + PAGE_SIZE * THREAD_PT_PAGES;
   user_pool = (char *)(globalPageTables) + PAGE_SIZE * GLOBAL_PT_PAGES;
 }
