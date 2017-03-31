@@ -82,10 +82,16 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
 }
 
 // Used to initialize memory for USER_POOL
-void my_malloc2_init2(void * mem_pool, size_t size){
+void my_malloc2_init2(my_pthread_t * thread){
   char * root = (char *)mem_pool;
-
-  *(int *)root = size - sizeof(int));
+  char * p = root;
+  while(p < (mem_pool + p + (8*1024*1024)){
+    if(*(int *)p == 4092){
+      *(int *) p *= -1;
+      thread->heap_front = p;
+      thread->heap_end = (p + PAGE_SIZE)
+    }
+  }
 }
 
 void * mymalloc_init() {
@@ -109,7 +115,7 @@ void * myallocate(unsigned int size, const char* FILENAME, int LINE, int caller)
     void * rc;
     block_signals(&current);
     printf("Thread alloc: %s, pool address %p\n", __current_thread->thread_name, __current_thread->mem_pool);
-    rc = mymalloc2(__current_thread->mem_pool_front, _current_thread->mem_pool_end, size, FILENAME, LINE);
+    rc = mymalloc2(__current_thread->mem_pool_front, _current_thread->mem_pool, size, FILENAME, LINE);
     ublock_signals(&current);
     return rc;
   }
@@ -141,8 +147,8 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
         create a new MemEntry following end of newly allocated block
     return address to beginning of data block following this memEntry
 */
-void *mymalloc2(void * mempool_front, void * mempool_end,size_t size, const char * file, int line){
-  char * root = (char *)mem_pool;
+void *mymalloc2(void * mempool, size_t size, const char * file, int line){
+  char * root = (char *)mempool;
   char * p, *succ;
 
   // *** algorithm for allocated chunks of memory ***
@@ -162,7 +168,7 @@ void *mymalloc2(void * mempool_front, void * mempool_end,size_t size, const char
       }
       return (void*)((size_t)p + sizeof(int));
     }
-  } while(p);
+  } while(p < (mempool + threadReservedSpace);
   //we ran out of space
   printf(ANSI_COLOR_RED "malloc() called failed from %s, line %d\n\tError: Not enough contiguous memory. Try freeing first.\n" ANSI_COLOR_RESET, file, line);
   return NULL;
