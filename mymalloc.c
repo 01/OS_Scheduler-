@@ -3,8 +3,19 @@
 #include "my_pthread_t.h"
 
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
+#define MAX_THREADS 200
 
-//#define SWAP_SIZE 16 * 1024 * 1024
+#define MEMORY_SIZE 8*1024*1024
+// #define OS_RESERVED_PAGES 4
+#define THREAD_RESERVED_PAGES 400
+#define THREAD_PT_PAGES 1
+#define GLOBAL_PT_PAGES 3
+// TODO: Include "OS_RESERVED_PAGES + " in the formula ...PAGE_SIZE * (...) if you uncomment OS_RESERVED_PAGES
+#define HEAP_SLOT_COUNT (MEMORY_SIZE - PAGE_SIZE * (THREAD_RESERVED_SIZE + THREAD_PT_PAGES + GLOBAL_PT_PAGES))/PAGE_SIZE
+#define SWAP_SIZE 16 * 1024 * 1024
+#define SWAP_SLOT_COUNT SWAP_SIZE/PAGE_SIZE
+#define NUM_PAGES (HEAP_SLOT_COUNT + SWAP_SLOT_COUNT)
+
 #define ALIGN_PAGE_SIZE(a) (void*)(((size_t)(a)+(pagesize-1))&~(pagesize-1))
 
 #define ANSI_COLOR_RED     "\x1b[31m"
@@ -14,9 +25,13 @@ static const size_t FREE_SIG = 0xAAAAAAAA;
 static const size_t USED_SIG = 0xAAAAAAAB;
 #define ALIGN8(a) (((a)+7)&~7)
 
-
 static void * system_pool;
 //static void * user_pool;
+
+static void * threadReservedSpace;
+static void * threadPageTables;
+static void * globalPageTables;
+
 
 static size_t pagesize;
 
@@ -51,21 +66,27 @@ static void ts_mem_handler(int sig, siginfo_t *sip, ucontext_t * current_context
   }
 }
 
+// Used to initialize memory for SYSTEM_POOL
 static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void * addr){
   struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection /*PROT_WRITE | PROT_READ | PROT_EXEC*/, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
   *mem_pool = root;
   root->prev = root->succ = NULL;
-  root->size = size - ALIGN8(sizeof(MemEntry));
+  root->size = size - ALIGN8(THREAD_RESERVED_SPACE * PAGE_SIZE + MAX_THREADS * sizeof(MemEntry));
   root->recognize = FREE_SIG;
+
+  // initialize ptrs to key regions in 8MB space
+  threadReservedSpace = root;
+  threadPageTables = (char *)(root) + PAGE_SIZE * THREAD_RESERVED_PAGES;
+  globalPageTables = (char *)(root) + PAGE_SIZE * (THREAD_RESERVED_PAGES + THREAD_PT_PAGES);
 }
 
+// Used to initialize memory for USER_POOL
 void my_malloc2_init2(void * mem_pool, size_t size){
   struct MemEntry * root = (struct MemEntry*)mem_pool;
   root->prev = root->succ = NULL;
   root->size = size - ALIGN8(sizeof(MemEntry));
   root->recognize = FREE_SIG;
 }
-
 
 void mymalloc_init() {
   printf("Initializing mymalloc\n");
@@ -181,14 +202,14 @@ void myfree2(void * mem_pool, void *address, const char * file, int line){
     printf(ANSI_COLOR_RED "free() call failed from %s, line %d\n\tError: Attempted to free nonexistent/already-freed memory.\n" ANSI_COLOR_RESET, file, line);
     return; //address not in memory
   }
-  
+
   p->recognize = FREE_SIG;
-  
+
   //merge free data blocks into one free data block
   while(p->prev != NULL && p->prev->recognize == FREE_SIG){
     p = p->prev;
   }
-  
+
   //keep finding prev pointer until no longer free, now merge all free blocks before and after
   while(p->succ != NULL && p->succ->recognize == FREE_SIG){ //merge with additional block
     p->size += p->succ->size + ALIGN8(sizeof(MemEntry));
