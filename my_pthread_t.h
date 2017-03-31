@@ -1,71 +1,120 @@
-#pragma once
-
 #include <ucontext.h>
-#if defined(USE_MY_MALLOC)
-#include "mymalloc.h"
-#endif
+#include <stdlib.h>
+#include <stdio.h>
+#include <sys/time.h>
 
-#if !defined(my_pthread_create) //for system override
+//number of priority queue levels
+#define RUN_QUEUES 5
+//ucontext stack size
+#define STACK_SIZE 4096
+//number of scheduler cycles before maintenance
+#define MAINTENANCE_THRESHOLD 20
+//thread lifetime threshold (usec) for increasing priority
+#define LIFETIME_THRESHOLD 1000000
 
-struct my_pthread_int;
-typedef  struct my_pthread_int * my_pthread_t;
-typedef void *  my_pthread_attr_t;
-typedef struct my_pthread_mutex_int * my_pthread_mutex_t;
-typedef void * my_pthread_mutexattr_t;
+//thread states
+//QUEUED: thread is in running queue
+//YIELD: thread called yield
+//EXITED: thread has exited
+//JOINING: thread called join
+//BLOCKED: thread is in waiting queue (blocking for mutex)
+//RUNNING: thread is running
+#define QUEUED 1
+#define YIELD 2
+#define EXITED 3
+#define JOINING 4
+#define BLOCKED 5
+#define RUNNING 6
 
-#if defined(USE_MY_MALLOC)
+//structs
 
-typedef struct _mem_slot{
-    size_t offset;
-    struct _mem_slot * next;
-} mem_slot_t;
-#endif
+union Data{
 
-typedef struct my_pthread_int {
-    struct my_pthread_int *ts_next;
-    struct my_pthread_int *ts_prev;
-    struct my_pthread_int *ts_mutex_next;
-    struct my_pthread_int *join;    // together with force_yield, transient
-    struct my_pthread_mutex_int *lock; // together with force_yield, transient
-    struct my_pthread_int *join_to; // after exit what to notify
-    long long block_until;
-    ucontext_t context;
-    void *(*entry_point)(void*);
-    void * entry_arg;
-    void * return_code;
-    void * stack; //consider deleting this one
-#if defined(USE_MY_MALLOC)
-    void * mem_pool; //for malloc
-    size_t mem_pool_size;
-    mem_slot_t * mem_slot;
-#endif    
-    size_t stack_size;
-    long long start_clock;
-    int ts_timeleft; // in ms
-    int ts_dispwait;
-    char thread_name[64];
-    unsigned char ts_priority;
-    unsigned char ts_blocked;
-    unsigned char is_main;
-    unsigned char not_new;
-    unsigned char force_yield; // when 1 then 'yield' by signal 
-    unsigned char threadID;
-    volatile unsigned char is_done;
-} my_pthread_int_t;
+	int arr[2];
+	void* arg;
+};
 
-// currently active thread (must not be NULL)
-extern volatile my_pthread_int_t * __current_thread;
+typedef struct my_pthread_t{
 
-void block_signals(sigset_t * current);
-void ublock_signals(const sigset_t * current);
+	ucontext_t context;
 
-int my_pthread_create( my_pthread_t * thread, my_pthread_attr_t * attr, void *(*function)(void*), void * arg);
+	int id;
+	struct my_pthread_t* next;
+	int priority;	
+	int state;
+	struct my_pthread_t* address;
+	void* retval;
+
+	//timeEnd - timeStart (usec)
+	unsigned long int timeRun;
+	//start of thread's scheduled time slice (usec)
+	unsigned long int timeStart;
+	//end of thread's scheduled time slice (usec)
+	unsigned long int timeEnd;
+	//time stamp when thread was created (usec)
+	unsigned long int timeLife;
+
+} my_pthread_t;
+
+typedef struct queue{
+
+	my_pthread_t* front;
+	my_pthread_t* rear;
+
+} queue;
+
+typedef struct scheduler{
+
+	queue* runQueues;
+	my_pthread_t* currentThread;
+	int inScheduler;
+	int swap;
+	int maintenanceCycle;
+
+} scheduler;
+
+typedef struct my_pthread_mutex_t{
+
+	volatile int flag;
+	queue waitQueue;
+
+} my_pthread_mutex_t;
+
+//global variables
+
+scheduler* myScheduler;
+int threadID = 0;
+int firstCall = 1;
+
+//functions
+
+int my_pthread_create(my_pthread_t* thread, pthread_attr_t* attr, void*(*function)(void*), void* arg);
 void my_pthread_yield();
-void my_pthread_exit(void *value_ptr);
-int my_pthread_join(my_pthread_t thread, void **value_ptr);
-int my_pthread_mutex_init(my_pthread_mutex_t *mutex, const my_pthread_mutexattr_t *mutexattr);
-int my_pthread_mutex_lock(my_pthread_mutex_t *mutex);
-int my_pthread_mutex_unlock(my_pthread_mutex_t *mutex);
-int my_pthread_mutex_destroy(my_pthread_mutex_t *mutex);
+void my_pthread_exit(void* value_ptr);
+int my_pthread_join(my_pthread_t thread, void** value_ptr);
 
-#endif
+int my_pthread_mutex_init(my_pthread_mutex_t* mutex, const pthread_mutexattr_t* mutexattr);
+int my_pthread_mutex_lock(my_pthread_mutex_t* mutex);
+int my_pthread_mutex_unlock(my_pthread_mutex_t* mutex);
+int my_pthread_mutex_destroy(my_pthread_mutex_t* mutex);
+
+void timer_handler(int signum);
+
+void enqueue(my_pthread_t* thread, queue* q);
+my_pthread_t* dequeue(queue* q);
+my_pthread_t* getNextThread();
+int checkNextThread();
+
+void scheduler_init();
+void maintenance();
+void schedule();
+
+
+
+
+
+
+
+
+
+
