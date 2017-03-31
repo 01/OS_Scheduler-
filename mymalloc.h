@@ -34,7 +34,7 @@
 #define UCONTEXT_SIZE sizeof(ucontext_t);
 // #define NUM_PAGES ((16 + 8) * 1024 * 1024)/PAGE_SIZE
 // FIXME: when swapfile added, add SWAP_SLOT_COUNT to NUM_PAGES
-#define NUM_PAGES HEAP_SLOT_COUNT 
+#define NUM_PAGES (HEAP_SLOT_COUNT + SWAP_SLOT_COUNT) 
 
 #define ERROR_NOT_ALLOCATED printf("ERROR: Attempted to free an unallocated block. Line: %d File: %s\n", __LINE__, __FILE__);
 #define ERROR_NOT_ENOUGH_SPACE printf("ERROR: Attempting to malloc too much space. Line: %d File: %s\n", __LINE__, __FILE__);

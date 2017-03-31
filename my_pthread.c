@@ -473,6 +473,7 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
     // it must be alive thread
     assert(next_thread->is_done == 0);
     // msync(user_mem, USER_POOL_SIZE, MS_SYNC);
+    #if 0
     #if defined(USE_MY_MALLOC)
     munmap(user_mem, USER_POOL_SIZE);
     if(next_thread->mem_pool != NULL) {
@@ -480,6 +481,7 @@ static void ts_setup_next_context(ucontext_t * sig_context, my_pthread_int_t * n
         void * rc = mmap(user_mem, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, next_thread->mem_slot->offset);
         assert( rc != MAP_FAILED );
     }    
+    #endif
     #endif
     if(current_thread != NULL) {
         swapcontext(&(current_thread->context),&(next_thread->context));
@@ -1144,4 +1146,3 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {3, 48, 58, 2, 59},
     {2, 49, 59, 32000, 59} //59
 };
-
