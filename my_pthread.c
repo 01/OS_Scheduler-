@@ -766,7 +766,9 @@ static int ts_init() {
     }
     lseek(__file_swap_id, USER_POOL_SIZE*INIT_SLOT_COUNT-1, SEEK_SET);
     write(__file_swap_id, " ", 1);
-    mymalloc_init();
+    void * system_pool = mymalloc_init();
+    void * user_pool = (void*)((char*)system_pool + SYSTEM_POOL_SIZE);
+    printf("User pool is initialized to %p\n", user_pool);
     slot_init(INIT_SLOT_COUNT);
     #endif
     t = (my_pthread_int_t *)malloc(sizeof(my_pthread_int_t));
@@ -781,7 +783,11 @@ static int ts_init() {
     //t->mem_slot = allocate_slot();
 #if defined(USE_MY_MALLOC)
     printf("Thread offset for main is %zu\n", t->mem_slot->offset);
-    t->mem_pool = mmap(NULL, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
+    printf("Mapping to user pool %p\n", user_pool);
+    //t->mem_pool = mmap(user_pool, USER_POOL_SIZE, PROT_WRITE | PROT_READ | PROT_EXEC, MAP_SHARED , __file_swap_id, t->mem_slot->offset);
+    read(__file_swap_id, user_pool, USER_POOL_SIZE);
+    t->mem_pool = user_pool;
+    printf("Mapped to user pool %p\n", t->mem_pool);
     my_malloc2_init2(t->mem_pool, USER_POOL_SIZE);
     //mprotect(t->mem_pool, USER_POOL_SIZE, PROT_NONE);
     user_mem = t->mem_pool;
@@ -1138,5 +1144,4 @@ static const disp_t __dispatch_control_table[MAX_PRIORITIES] = {
     {3, 48, 58, 2, 59},
     {2, 49, 59, 32000, 59} //59
 };
-
 
