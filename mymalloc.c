@@ -5,14 +5,6 @@
 #define PAGE_SIZE sysconf(_SC_PAGE_SIZE)
 #define MAX_THREADS 200
 
-// #define OS_RESERVED_PAGES 4
-#define THREAD_RESERVED_PAGES 400
-#define THREAD_PT_PAGES 200
-#define GLOBAL_PT_PAGES 3
-// TODO: Include "OS_RESERVED_PAGES + " in the formula ...PAGE_SIZE * (...) if you uncomment OS_RESERVED_PAGES
-#define SWAP_SIZE 16 * 1024 * 1024
-#define SWAP_SLOT_COUNT SWAP_SIZE/PAGE_SIZE
-
 #define ALIGN_PAGE_SIZE(a) (void*)(((size_t)(a)+(pagesize-1))&~(pagesize-1))
 
 #define ANSI_COLOR_RED     "\x1b[31m"
@@ -76,7 +68,7 @@ static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void 
 
   // initialize ptrs to key regions in 8MB space
   threadReservedSpace = (char *)(root + PAGE_SIZE * 3) ;
-  threadPageTables = (char *)((root) + PAGE_SIZE * THREAD_RESERVED_PAGES_;
+  threadPageTables = (char *)(root) + PAGE_SIZE * THREAD_RESERVED_PAGES_;
   globalPageTables = (char *)(threadPageTables) + PAGE_SIZE * THREAD_PT_PAGES;
   user_pool = (char *)(globalPageTables) + PAGE_SIZE * GLOBAL_PT_PAGES;
 }
@@ -92,6 +84,14 @@ void my_malloc2_init2(my_pthread_t * thread){
       thread->heap_end = (p + PAGE_SIZE)
     }
   }
+}
+
+short getPageForVirtualSlot(short slot) {
+  return *(short *)((char *)threadPageTables * 200 * __current_thread->threadID + sizeof(short)*slot);
+}
+
+short getCurrentSlotForPage(short pageNum) {
+  return *(short *)((char *)globalPageTables + sizeof(short) * pageNum);
 }
 
 void * mymalloc_init() {
