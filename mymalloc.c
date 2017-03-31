@@ -65,22 +65,25 @@ static void ts_mem_handler(int sig, siginfo_t *sip, ucontext_t * current_context
 
 // Used to initialize memory for SYSTEM_POOL
 static void my_malloc2_init(void ** mem_pool, size_t size, int protection, void * addr){
-  struct MemEntry * root = (struct MemEntry*)mmap(addr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  char * root = (char *)mmap(addr, size, protection, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  char * ptr = root;
   *mem_pool = root;
-  root->prev = root->succ = NULL;
-  root->size = ALIGN8(THREAD_RESERVED_PAGES * PAGE_SIZE + MAX_THREADS * sizeof(MemEntry));
-  root->recognize = FREE_SIG;
+  while(ptr < (ptr + (8*1024*1024))){
+    * (int *)ptr = (4096 - sizeof(int));
+    ptr += PAGE_SIZE;
+  }
+
 
   // initialize ptrs to key regions in 8MB space
-  threadReservedSpace = root;
-  threadPageTables = (char *)(root) + PAGE_SIZE * THREAD_RESERVED_PAGES;
+  threadReservedSpace = (char *)(root + PAGE_SIZE * 3) ;
+  threadPageTables = (char *)((root) + PAGE_SIZE * THREAD_RESERVED_PAGES_;
   globalPageTables = (char *)(threadPageTables) + PAGE_SIZE * THREAD_PT_PAGES;
   user_pool = (char *)(globalPageTables) + PAGE_SIZE * GLOBAL_PT_PAGES;
 }
 
 // Used to initialize memory for USER_POOL
 void my_malloc2_init2(void * mem_pool, size_t size){
-  struct MemEntry * root = (struct MemEntry*)mem_pool;
+  char * root = (char *)struct MemEntry*)mem_pool;
   root->prev = root->succ = NULL;
   root->size = size - ALIGN8(sizeof(MemEntry));
   root->recognize = FREE_SIG;
@@ -140,29 +143,25 @@ void mydeallocate(void * ptr, const char* FILENAME, int LINE, int caller){
     return address to beginning of data block following this memEntry
 */
 void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
-  struct MemEntry * root = (struct MemEntry*)mem_pool;
-  struct MemEntry * p, *succ;
+  char * root = (char *)mem_pool;
+  char * p, *succ;
 
   // *** algorithm for allocated chunks of memory ***
   p = root;
-  size = ALIGN8(size);
+
   do{
-    if(p->size < size) p = p->succ; // p is not big enough for allocation
-    else if(p->recognize != FREE_SIG) p = p->succ; // p is not free to be allocated
-    else if(p->size >= size) // found a chunk large enough
+    int meta = *(int *)p;
+    int blockSize = abs(meta);
+    if(abs(blockSize < size) p += blockSize + sizeof(int); // p is not big enough for allocation
+    else if(meta < 0) p += blockSize + sizeof(int); // p is not free to be allocated
+    else if(blockSize>= size) // found a chunk large enough
     {
-      p->recognize = USED_SIG;
       // break off current data-block & make another MemEntry struct
-      if(p->size > (size + ALIGN8(sizeof(MemEntry)))){
-        succ = (MemEntry*)((size_t)p + ALIGN8(sizeof(MemEntry)) + size);
-        succ->prev = p;
-        succ->succ = p->succ;
-        succ->size = p->size - ALIGN8(sizeof(MemEntry)) - size;
-        succ->recognize = FREE_SIG;
-        p->size = size;
-        p->succ = succ;
+      if(p->size > (size + sizeof(int)){
+        * (int *)p = (size * -1)
+        if((p+=(sizeof(int) + size) <= memEnd - sizeof(int)) *(int * )p = (memend - p - sizeof(int));
       }
-      return (void*)((size_t)p + ALIGN8(sizeof(MemEntry)));
+      return (void*)((size_t)p + sizeof(int));
     }
   } while(p);
   //we ran out of space
@@ -193,29 +192,57 @@ void *mymalloc2(void * mem_pool, size_t size, const char * file, int line){
             keep repeating until you encounter a MemEntry that is NOT free (isFree = 0)
 */
 void myfree2(void * mem_pool, void *address, const char * file, int line){
-  struct MemEntry *p;
-  struct MemEntry * root = (struct MemEntry*)mem_pool;
-
-  if(*(size_t*)(address - sizeof(size_t)) == USED_SIG){
-    p = (MemEntry*)((size_t)address - ALIGN8(sizeof(MemEntry)));
+  char *p;
+  char * root = (char *)mem_pool;
+  p = root;
+  int success = 0;
+  while(p < (char *)addres){
+    if(p == (address - sizeof(int) && (*(int *)p < 0)){
+      *(int *)p *= -1;
+      success = 1;
+    }
   }
-  else{
-    printf(ANSI_COLOR_RED "free() call failed from %s, line %d\n\tError: Attempted to free nonexistent/already-freed memory.\n" ANSI_COLOR_RESET, file, line);
-    return; //address not in memory
-  }
+    if(!success){
+      printf(ANSI_COLOR_RED "free() call failed from %s, line %d\n\tError: Attempted to free nonexistent/already-freed memory.\n" ANSI_COLOR_RESET, file, line);
+      return; //address not in memory
+    }
 
-  p->recognize = FREE_SIG;
+//void defrag()
+  char * tracker = mempool;
+    int meta_size1 = * (int *) tracker;
+    int block_size1 = abs.(meta_size1);
+    int block_size2 =0;
+    int meta_size2 = 0;
+    if((tracker + sizeof(int) + block_size1)< mempool_end){
+      meta_size2 = * (int *) (tracker + sizeof(int) + block_size1);
+      block_size2 = abs(meta_size2);
+    }
+    else {return;}
 
-  //merge free data blocks into one free data block
-  while(p->prev != NULL && p->prev->recognize == FREE_SIG){
-    p = p->prev;
-  }
+    while((tracker + sizeof(int) + block_size1)< mempool_end){      // Conditional loop to cycle through all memory blocks in the main memory
+      meta_size1 = * (int *) tracker;
+      block_size1 = abs(meta_size1)
+      if((tracker + sizeof(int) + block_size1)< mempool_end){
+      meta_size2 = * (int *) (tracker + sizeof(int) + block_size1);
+      block_size2 = abs(meta_size2)
+    else return;
 
-  //keep finding prev pointer until no longer free, now merge all free blocks before and after
-  while(p->succ != NULL && p->succ->recognize == FREE_SIG){ //merge with additional block
-    p->size += p->succ->size + ALIGN8(sizeof(MemEntry));
-    p->succ->recognize = 0; //to avoid getting picked up by future addresses
-    p->succ = p->succ->succ;
-  }
+      while(meta_size1 >= 0 && (meta_size2 >=0) && (tracker + sizeof(int) + block_size1)< mempool_end){ // Conditional loop to continue combining neighboring free memory blocks until
+
+        *(int *)tracker += (block_size2 + sizeof(int));
+        return;
+        meta_size1 = * (int *) tracker;
+        block_size1 = abs(meta_size1)
+        if((tracker + sizeof(int) + block_size1)< mempool_end){
+          meta_size2 = * (int *) (tracker + sizeof(int) + block_size1);
+          block_size2 = abs(meta_size2);
+        }
+        else return;                  // the free memory block does nto have a free neighbor
+
+      }
+
+     tracker += (sizeof(int) + block_size1);
+    }
+}
 }
 #endif
